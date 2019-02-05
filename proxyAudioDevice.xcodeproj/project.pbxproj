@@ -1,0 +1,739 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2D46CA7B17D6ADCA00049D4A /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 2D46CA7817D6AD8A00049D4A /* Localizable.strings */; };
+		2D46CA7D17D6AF4200049D4A /* DeviceIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2D46CA7C17D6AF4200049D4A /* DeviceIcon.icns */; };
+		2D616EF415B8C82500D598BD /* ProxyAudioDevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2D616EF215B8C82500D598BD /* ProxyAudioDevice.cpp */; };
+		2D7477AD1578168D00412279 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2D7477AC1578168D00412279 /* CoreFoundation.framework */; };
+		7708C82D2215508F00D4B814 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7708C82B2215508E00D4B814 /* Localizable.strings */; };
+		776BB92D2208DF8500A1120F /* AudioRingBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 776BB92C2208DF8500A1120F /* AudioRingBuffer.cpp */; };
+		776E4F5B2208137F00AE0417 /* AudioDevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 776E4F522208101300AE0417 /* AudioDevice.cpp */; };
+		776E4F5D2208138B00AE0417 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2D7477EC157823CF00412279 /* CoreAudio.framework */; };
+		776E4F5E2208138E00AE0417 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 776E4F592208110100AE0417 /* Carbon.framework */; };
+		7799CEAB220EB20900A3DB04 /* CAMutex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7799CEAA220EB20900A3DB04 /* CAMutex.cpp */; };
+		7799CEB1220EB25A00A3DB04 /* CADebugMacros.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7799CEAC220EB25A00A3DB04 /* CADebugMacros.cpp */; };
+		7799CEB2220EB25A00A3DB04 /* CAHostTimeBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7799CEAD220EB25A00A3DB04 /* CAHostTimeBase.cpp */; };
+		7799CEB5220EB28800A3DB04 /* CADebugPrintf.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7799CEB4220EB28800A3DB04 /* CADebugPrintf.cpp */; };
+		77CAB5632212252F0092B2B0 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 77CAB5622212252F0092B2B0 /* AppKit.framework */; };
+		77CAB56C221534640092B2B0 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 77CAB56B221534640092B2B0 /* AppDelegate.m */; };
+		77CAB56E221534650092B2B0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 77CAB56D221534650092B2B0 /* Assets.xcassets */; };
+		77CAB571221534650092B2B0 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 77CAB56F221534650092B2B0 /* MainMenu.xib */; };
+		77CAB574221534650092B2B0 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 77CAB573221534650092B2B0 /* main.m */; };
+		77CAB57C22153A2D0092B2B0 /* WindowDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 77CAB57B22153A2D0092B2B0 /* WindowDelegate.mm */; };
+		77CAB57E22153CA40092B2B0 /* AudioDevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 776E4F522208101300AE0417 /* AudioDevice.cpp */; };
+		77CAB57F221540580092B2B0 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2D7477EC157823CF00412279 /* CoreAudio.framework */; };
+		77CAB5812215405C0092B2B0 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 77CAB5802215405C0092B2B0 /* Cocoa.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7708C826221547EB00D4B814 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2D74779D1578162B00412279 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2D7477A81578168D00412279;
+			remoteInfo = ProxyAudioDevice;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2D46CA7917D6AD8A00049D4A /* English */ = {isa = PBXFileReference; fileEncoding = 10; lastKnownFileType = text.plist.strings; name = English; path = English.lproj/Localizable.strings; sourceTree = "<group>"; };
+		2D46CA7C17D6AF4200049D4A /* DeviceIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = DeviceIcon.icns; sourceTree = "<group>"; };
+		2D616EF115B8C82500D598BD /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2D616EF215B8C82500D598BD /* ProxyAudioDevice.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ProxyAudioDevice.cpp; sourceTree = "<group>"; };
+		2D7477A91578168D00412279 /* ProxyAudioDevice.driver */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProxyAudioDevice.driver; sourceTree = BUILT_PRODUCTS_DIR; };
+		2D7477AC1578168D00412279 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+		2D7477EC157823CF00412279 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
+		2DD7AA9915EC572000C67AE1 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		2DED183A15C357180091BE97 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = System/Library/Frameworks/Kernel.framework; sourceTree = SDKROOT; };
+		7708C82C2215508E00D4B814 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		776BB92B2208DF8500A1120F /* AudioRingBuffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioRingBuffer.h; sourceTree = "<group>"; };
+		776BB92C2208DF8500A1120F /* AudioRingBuffer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioRingBuffer.cpp; sourceTree = "<group>"; };
+		776BB93B220C04DB00A1120F /* CoreServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreServices.framework; path = System/Library/Frameworks/CoreServices.framework; sourceTree = SDKROOT; };
+		776E4F512208101300AE0417 /* AudioDevice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioDevice.h; sourceTree = "<group>"; };
+		776E4F522208101300AE0417 /* AudioDevice.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioDevice.cpp; sourceTree = "<group>"; };
+		776E4F592208110100AE0417 /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
+		7799CEA3220EA68200A3DB04 /* CFTypeHelpers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CFTypeHelpers.h; sourceTree = "<group>"; };
+		7799CEA4220EAB6600A3DB04 /* debugHelpers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = debugHelpers.h; sourceTree = "<group>"; };
+		7799CEA9220EB20900A3DB04 /* CAMutex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CAMutex.h; sourceTree = "<group>"; };
+		7799CEAA220EB20900A3DB04 /* CAMutex.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CAMutex.cpp; sourceTree = "<group>"; };
+		7799CEAC220EB25A00A3DB04 /* CADebugMacros.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CADebugMacros.cpp; sourceTree = "<group>"; };
+		7799CEAD220EB25A00A3DB04 /* CAHostTimeBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CAHostTimeBase.cpp; sourceTree = "<group>"; };
+		7799CEAE220EB25A00A3DB04 /* CADebugMacros.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CADebugMacros.h; sourceTree = "<group>"; };
+		7799CEAF220EB25A00A3DB04 /* CAException.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CAException.h; sourceTree = "<group>"; };
+		7799CEB0220EB25A00A3DB04 /* CAHostTimeBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CAHostTimeBase.h; sourceTree = "<group>"; };
+		7799CEB3220EB28800A3DB04 /* CADebugPrintf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CADebugPrintf.h; sourceTree = "<group>"; };
+		7799CEB4220EB28800A3DB04 /* CADebugPrintf.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CADebugPrintf.cpp; sourceTree = "<group>"; };
+		77C548122211F5240041623A /* ProxyAudioDevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProxyAudioDevice.h; sourceTree = "<group>"; };
+		77CAB5622212252F0092B2B0 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		77CAB568221534640092B2B0 /* Proxy Audio Device Settings.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Proxy Audio Device Settings.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		77CAB56A221534640092B2B0 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		77CAB56B221534640092B2B0 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		77CAB56D221534650092B2B0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		77CAB570221534650092B2B0 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
+		77CAB572221534650092B2B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		77CAB573221534650092B2B0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		77CAB575221534650092B2B0 /* Proxy_Audio_Device_Settings.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Proxy_Audio_Device_Settings.entitlements; sourceTree = "<group>"; };
+		77CAB57A22153A2D0092B2B0 /* WindowDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WindowDelegate.h; sourceTree = "<group>"; };
+		77CAB57B22153A2D0092B2B0 /* WindowDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = WindowDelegate.mm; sourceTree = "<group>"; };
+		77CAB5802215405C0092B2B0 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2D7477A61578168D00412279 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77CAB5632212252F0092B2B0 /* AppKit.framework in Frameworks */,
+				776E4F5E2208138E00AE0417 /* Carbon.framework in Frameworks */,
+				776E4F5D2208138B00AE0417 /* CoreAudio.framework in Frameworks */,
+				2D7477AD1578168D00412279 /* CoreFoundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB565221534640092B2B0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77CAB5812215405C0092B2B0 /* Cocoa.framework in Frameworks */,
+				77CAB57F221540580092B2B0 /* CoreAudio.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2D616EF015B8C82500D598BD /* proxyAudioDevice */ = {
+			isa = PBXGroup;
+			children = (
+				2D46CA7C17D6AF4200049D4A /* DeviceIcon.icns */,
+				2D46CA7817D6AD8A00049D4A /* Localizable.strings */,
+				2D616EF115B8C82500D598BD /* Info.plist */,
+				776BB92C2208DF8500A1120F /* AudioRingBuffer.cpp */,
+				776BB92B2208DF8500A1120F /* AudioRingBuffer.h */,
+				7799CEA4220EAB6600A3DB04 /* debugHelpers.h */,
+				2D616EF215B8C82500D598BD /* ProxyAudioDevice.cpp */,
+				77C548122211F5240041623A /* ProxyAudioDevice.h */,
+				7799CEA8220EB20900A3DB04 /* PublicUtility */,
+			);
+			path = proxyAudioDevice;
+			sourceTree = "<group>";
+		};
+		2D74779B1578162B00412279 = {
+			isa = PBXGroup;
+			children = (
+				77CAB57D22153C9A0092B2B0 /* shared */,
+				2D616EF015B8C82500D598BD /* proxyAudioDevice */,
+				77CAB569221534640092B2B0 /* ProxyAudioDeviceSettings */,
+				2D7477AB1578168D00412279 /* Frameworks */,
+				2D7477AA1578168D00412279 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2D7477AA1578168D00412279 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2D7477A91578168D00412279 /* ProxyAudioDevice.driver */,
+				77CAB568221534640092B2B0 /* Proxy Audio Device Settings.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2D7477AB1578168D00412279 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				77CAB5802215405C0092B2B0 /* Cocoa.framework */,
+				77CAB5622212252F0092B2B0 /* AppKit.framework */,
+				776BB93B220C04DB00A1120F /* CoreServices.framework */,
+				776E4F592208110100AE0417 /* Carbon.framework */,
+				2D7477EC157823CF00412279 /* CoreAudio.framework */,
+				2D7477AC1578168D00412279 /* CoreFoundation.framework */,
+				2DD7AA9915EC572000C67AE1 /* IOKit.framework */,
+				2DED183A15C357180091BE97 /* Kernel.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		7799CEA8220EB20900A3DB04 /* PublicUtility */ = {
+			isa = PBXGroup;
+			children = (
+				7799CEAC220EB25A00A3DB04 /* CADebugMacros.cpp */,
+				7799CEAE220EB25A00A3DB04 /* CADebugMacros.h */,
+				7799CEB4220EB28800A3DB04 /* CADebugPrintf.cpp */,
+				7799CEB3220EB28800A3DB04 /* CADebugPrintf.h */,
+				7799CEAF220EB25A00A3DB04 /* CAException.h */,
+				7799CEAD220EB25A00A3DB04 /* CAHostTimeBase.cpp */,
+				7799CEB0220EB25A00A3DB04 /* CAHostTimeBase.h */,
+				7799CEA9220EB20900A3DB04 /* CAMutex.h */,
+				7799CEAA220EB20900A3DB04 /* CAMutex.cpp */,
+			);
+			path = PublicUtility;
+			sourceTree = "<group>";
+		};
+		77CAB569221534640092B2B0 /* ProxyAudioDeviceSettings */ = {
+			isa = PBXGroup;
+			children = (
+				77CAB56A221534640092B2B0 /* AppDelegate.h */,
+				77CAB56B221534640092B2B0 /* AppDelegate.m */,
+				77CAB57A22153A2D0092B2B0 /* WindowDelegate.h */,
+				77CAB57B22153A2D0092B2B0 /* WindowDelegate.mm */,
+				77CAB56F221534650092B2B0 /* MainMenu.xib */,
+				7708C82B2215508E00D4B814 /* Localizable.strings */,
+				77CAB56D221534650092B2B0 /* Assets.xcassets */,
+				77CAB572221534650092B2B0 /* Info.plist */,
+				77CAB573221534650092B2B0 /* main.m */,
+				77CAB575221534650092B2B0 /* Proxy_Audio_Device_Settings.entitlements */,
+			);
+			path = ProxyAudioDeviceSettings;
+			sourceTree = "<group>";
+		};
+		77CAB57D22153C9A0092B2B0 /* shared */ = {
+			isa = PBXGroup;
+			children = (
+				776E4F522208101300AE0417 /* AudioDevice.cpp */,
+				776E4F512208101300AE0417 /* AudioDevice.h */,
+				7799CEA3220EA68200A3DB04 /* CFTypeHelpers.h */,
+			);
+			path = shared;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2D7477A81578168D00412279 /* ProxyAudioDevice */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2D7477B51578168D00412279 /* Build configuration list for PBXNativeTarget "ProxyAudioDevice" */;
+			buildPhases = (
+				2D7477A51578168D00412279 /* Sources */,
+				2D7477A61578168D00412279 /* Frameworks */,
+				2D46CA7A17D6ADC500049D4A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ProxyAudioDevice;
+			productName = AudioNULLDriver;
+			productReference = 2D7477A91578168D00412279 /* ProxyAudioDevice.driver */;
+			productType = "com.apple.product-type.bundle";
+		};
+		77CAB567221534640092B2B0 /* Proxy Audio Device Settings */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77CAB579221534650092B2B0 /* Build configuration list for PBXNativeTarget "Proxy Audio Device Settings" */;
+			buildPhases = (
+				77CAB564221534640092B2B0 /* Sources */,
+				77CAB565221534640092B2B0 /* Frameworks */,
+				77CAB566221534640092B2B0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7708C827221547EB00D4B814 /* PBXTargetDependency */,
+			);
+			name = "Proxy Audio Device Settings";
+			productName = "Proxy Audio Device Settings";
+			productReference = 77CAB568221534640092B2B0 /* Proxy Audio Device Settings.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2D74779D1578162B00412279 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1010;
+				TargetAttributes = {
+					2D7477A81578168D00412279 = {
+						DevelopmentTeam = F8M4YUY649;
+						ProvisioningStyle = Automatic;
+					};
+					77CAB567221534640092B2B0 = {
+						CreatedOnToolsVersion = 10.1;
+						DevelopmentTeam = F8M4YUY649;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 2D7477A01578162B00412279 /* Build configuration list for PBXProject "proxyAudioDevice" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				English,
+				Base,
+			);
+			mainGroup = 2D74779B1578162B00412279;
+			productRefGroup = 2D7477AA1578168D00412279 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2D7477A81578168D00412279 /* ProxyAudioDevice */,
+				77CAB567221534640092B2B0 /* Proxy Audio Device Settings */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2D46CA7A17D6ADC500049D4A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2D46CA7B17D6ADCA00049D4A /* Localizable.strings in Resources */,
+				2D46CA7D17D6AF4200049D4A /* DeviceIcon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB566221534640092B2B0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77CAB56E221534650092B2B0 /* Assets.xcassets in Resources */,
+				7708C82D2215508F00D4B814 /* Localizable.strings in Resources */,
+				77CAB571221534650092B2B0 /* MainMenu.xib in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2D7477A51578168D00412279 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				776BB92D2208DF8500A1120F /* AudioRingBuffer.cpp in Sources */,
+				7799CEB2220EB25A00A3DB04 /* CAHostTimeBase.cpp in Sources */,
+				776E4F5B2208137F00AE0417 /* AudioDevice.cpp in Sources */,
+				2D616EF415B8C82500D598BD /* ProxyAudioDevice.cpp in Sources */,
+				7799CEB1220EB25A00A3DB04 /* CADebugMacros.cpp in Sources */,
+				7799CEB5220EB28800A3DB04 /* CADebugPrintf.cpp in Sources */,
+				7799CEAB220EB20900A3DB04 /* CAMutex.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB564221534640092B2B0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77CAB57C22153A2D0092B2B0 /* WindowDelegate.mm in Sources */,
+				77CAB574221534650092B2B0 /* main.m in Sources */,
+				77CAB57E22153CA40092B2B0 /* AudioDevice.cpp in Sources */,
+				77CAB56C221534640092B2B0 /* AppDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7708C827221547EB00D4B814 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2D7477A81578168D00412279 /* ProxyAudioDevice */;
+			targetProxy = 7708C826221547EB00D4B814 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		2D46CA7817D6AD8A00049D4A /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				2D46CA7917D6AD8A00049D4A /* English */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		7708C82B2215508E00D4B814 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				7708C82C2215508E00D4B814 /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		77CAB56F221534650092B2B0 /* MainMenu.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				77CAB570221534650092B2B0 /* Base */,
+			);
+			name = MainMenu.xib;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		2D7477A21578162B00412279 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_IMPLICIT_SIGN_CONVERSION = NO;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CLANG_WARN__EXIT_TIME_DESTRUCTORS = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS = YES;
+				GCC_WARN_ABOUT_MISSING_NEWLINE = YES;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = YES;
+				GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_SHADOW = YES;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		2D7477A31578162B00412279 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_IMPLICIT_SIGN_CONVERSION = NO;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CLANG_WARN__EXIT_TIME_DESTRUCTORS = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS = YES;
+				GCC_WARN_ABOUT_MISSING_NEWLINE = YES;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = YES;
+				GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_SHADOW = YES;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		2D7477A41578164E00412279 /* Debug-Opt */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_IMPLICIT_SIGN_CONVERSION = NO;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CLANG_WARN__EXIT_TIME_DESTRUCTORS = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS = YES;
+				GCC_WARN_ABOUT_MISSING_NEWLINE = YES;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = YES;
+				GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_SHADOW = YES;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = "Debug-Opt";
+		};
+		2D7477B61578168D00412279 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = F8M4YUY649;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=0",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/proxyAudioDevice/Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Audio/Plug-Ins/HAL";
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				PRODUCT_BUNDLE_IDENTIFIER = net.briankendall.ProxyAudioDevice;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				WRAPPER_EXTENSION = driver;
+			};
+			name = Release;
+		};
+		2D7477B71578168D00412279 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = F8M4YUY649;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/proxyAudioDevice/Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Audio/Plug-Ins/HAL";
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				PRODUCT_BUNDLE_IDENTIFIER = net.briankendall.ProxyAudioDevice;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				WRAPPER_EXTENSION = driver;
+			};
+			name = Debug;
+		};
+		2D7477B81578168D00412279 /* Debug-Opt */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = F8M4YUY649;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/proxyAudioDevice/Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Audio/Plug-Ins/HAL";
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				PRODUCT_BUNDLE_IDENTIFIER = net.briankendall.ProxyAudioDevice;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				WRAPPER_EXTENSION = driver;
+			};
+			name = "Debug-Opt";
+		};
+		77CAB576221534650092B2B0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = ProxyAudioDeviceSettings/Proxy_Audio_Device_Settings.entitlements;
+				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEVELOPMENT_TEAM = F8M4YUY649;
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				INFOPLIST_FILE = ProxyAudioDeviceSettings/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.briankendall.Proxy-Audio-Device-Settings";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		77CAB577221534650092B2B0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = ProxyAudioDeviceSettings/Proxy_Audio_Device_Settings.entitlements;
+				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = F8M4YUY649;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				INFOPLIST_FILE = ProxyAudioDeviceSettings/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.briankendall.Proxy-Audio-Device-Settings";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		77CAB578221534650092B2B0 /* Debug-Opt */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = ProxyAudioDeviceSettings/Proxy_Audio_Device_Settings.entitlements;
+				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = F8M4YUY649;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				INFOPLIST_FILE = ProxyAudioDeviceSettings/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.briankendall.Proxy-Audio-Device-Settings";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = "Debug-Opt";
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2D7477A01578162B00412279 /* Build configuration list for PBXProject "proxyAudioDevice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2D7477A21578162B00412279 /* Release */,
+				2D7477A31578162B00412279 /* Debug */,
+				2D7477A41578164E00412279 /* Debug-Opt */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2D7477B51578168D00412279 /* Build configuration list for PBXNativeTarget "ProxyAudioDevice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2D7477B61578168D00412279 /* Release */,
+				2D7477B71578168D00412279 /* Debug */,
+				2D7477B81578168D00412279 /* Debug-Opt */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		77CAB579221534650092B2B0 /* Build configuration list for PBXNativeTarget "Proxy Audio Device Settings" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				77CAB576221534650092B2B0 /* Release */,
+				77CAB577221534650092B2B0 /* Debug */,
+				77CAB578221534650092B2B0 /* Debug-Opt */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2D74779D1578162B00412279 /* Project object */;
+}
