@@ -4649,6 +4649,12 @@ AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
     
     {
         CAMutex::Locker locker(&stateMutex);
+        
+        if (!outputDeviceUID) {
+            DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, output device UID is null");
+            return AudioDevice();
+        }
+        
         currentOutputDeviceUID = CFStringCreateCopy(NULL, outputDeviceUID);
     }
     
@@ -4859,7 +4865,14 @@ void ProxyAudioDevice::initializeOutputDevice() {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1000 * NSEC_PER_MSEC),
                    dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
                    ^() {
+                       // Any initialization that involves calling CoreAudio APIs must be done here
+                       // in a separate thread from the rest of the driver. Otherwise we'll get
+                       // deadlocks!
                        DebugMsg("ProxyAudio: initializeOutputDevice running in separate thread");
+                       if (!outputDeviceUID) {
+                           outputDeviceUID = copyDefaultProxyOutputDeviceUID();
+                       }
+                       
                        setupTargetOutputDevice();
                        setupAudioDevicesListener();
                    });
@@ -5524,9 +5537,9 @@ CFStringRef ProxyAudioDevice::copyOutputDeviceUIDFromStorage() {
         return result;
     }
 
-    DebugMsg("ProxyAudio: copyOutputDeviceUIDFromStorage will return default output device");
+    DebugMsg("ProxyAudio: copyOutputDeviceUIDFromStorage no output device UID in storage");
     
-    return copyDefaultProxyOutputDeviceUID();
+    return nullptr;
 }
 
 void ProxyAudioDevice::setOutputDevice(CFStringRef deviceUID) {
@@ -5545,7 +5558,7 @@ void ProxyAudioDevice::setOutputDevice(CFStringRef deviceUID) {
     }
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        CAMutex::Locker locker(&outputDeviceMutex);
+        CAMutex::Locker locker(&stateMutex);
         gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("outputDeviceUID"), outputDeviceUID);
     });
     
