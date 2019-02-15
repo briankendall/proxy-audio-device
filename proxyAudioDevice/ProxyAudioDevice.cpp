@@ -515,6 +515,7 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
 
     //    declare the local variables
     OSStatus theAnswer = 0;
+    DebugMsg("ProxyAudio: ProxyAudio_Initialize");
 
     //    check the arguments
     if (inDriver != gAudioServerPlugInDriverRef) {
@@ -695,6 +696,8 @@ OSStatus ProxyAudioDevice::PerformDeviceConfigurationChange(AudioServerPlugInDri
     struct mach_timebase_info theTimeBaseInfo;
     Float64 theHostClockFrequency = 0;
 
+    DebugMsg("ProxyAudio: PerformDeviceConfigurationChange");
+    
     //    check the arguments
     FailWithAction(inDriver != gAudioServerPlugInDriverRef,
                    theAnswer = kAudioHardwareBadObjectError,
@@ -724,6 +727,7 @@ OSStatus ProxyAudioDevice::PerformDeviceConfigurationChange(AudioServerPlugInDri
         gDevice_HostTicksPerFrame = theHostClockFrequency / gDevice_SampleRate;
     }
 
+    DebugMsg("ProxyAudio: finished PerformDeviceConfigurationChange, will match sample rate");
     matchOutputDeviceSampleRate();
 
 Done:
@@ -4639,6 +4643,7 @@ Done:
 #pragma mark Output Device Operations
 
 AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
+    DebugMsg("ProxyAudio: findTargetOutputAudioDevice");
     std::vector<AudioObjectID> devices = AudioDevice::allAudioDevices();
     CFStringSmartRef currentOutputDeviceUID;
     
@@ -4646,6 +4651,8 @@ AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
         CAMutex::Locker locker(&stateMutex);
         currentOutputDeviceUID = CFStringCreateCopy(NULL, outputDeviceUID);
     }
+    
+    DebugMsg("ProxyAudio: findTargetOutputAudioDevice target UID: %s", CFStringToStdString(currentOutputDeviceUID).c_str());
     
     for (AudioObjectID device : devices) {
         AudioObjectPropertyAddress propertyAddress = {
@@ -4657,11 +4664,14 @@ AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
 
         if (err == noErr && uid) {
             if (CFStringCompare(uid, currentOutputDeviceUID, 0) == kCFCompareEqualTo) {
+                DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, found output device");
                 return AudioDevice(device);
             }
         }
     }
 
+    DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, not not find output device");
+    
     return AudioDevice();
 }
 
@@ -4683,6 +4693,7 @@ int ProxyAudioDevice::outputDeviceAliveListener(AudioObjectID inObjectID,
 #pragma unused(inNumberAddresses)
 #pragma unused(inAddresses)
 
+    DebugMsg("ProxyAudio: outputDeviceAliveListener");
     {
         CAMutex::Locker locker(outputDeviceMutex);
         UInt32 alive = 0;
@@ -4694,7 +4705,7 @@ int ProxyAudioDevice::outputDeviceAliveListener(AudioObjectID inObjectID,
         }
     }
 
-    DebugMsg("ProxyAudio: output device no longer alive");
+    DebugMsg("ProxyAudio: outputDeviceAliveListener output device no longer alive");
     deinitializeOutputDevice();
 
     return noErr;
@@ -4718,6 +4729,7 @@ int ProxyAudioDevice::outputDeviceSampleRateListener(AudioObjectID inObjectID,
 #pragma unused(inObjectID)
 #pragma unused(inNumberAddresses)
 #pragma unused(inAddresses)
+    DebugMsg("ProxyAudio: outputDeviceSampleRateListener, will match sample rate");
     matchOutputDeviceSampleRate();
 
     return noErr;
@@ -4740,13 +4752,16 @@ int ProxyAudioDevice::devicesListenerProc(AudioObjectID inObjectID,
 #pragma unused(inObjectID)
 #pragma unused(inNumberAddresses)
 #pragma unused(inAddresses)
-    DebugMsg("ProxyAudio: current devices changed");
+    DebugMsg("ProxyAudio: devicesListenerProc current devices changed");
     setupTargetOutputDevice();
     return noErr;
 }
 
 void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
+    DebugMsg("ProxyAudio: matchOutputDeviceSampleRateNoLock");
+    
     if (!outputDevice.isValid()) {
+        DebugMsg("ProxyAudio: matchOutputDeviceSampleRateNoLock ... no valid output device");
         return;
     }
 
@@ -4771,7 +4786,7 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
         return;
     }
 
-    DebugMsg("ProxyAudio: changing sample rate to match output device new sample rate: %lf", outputDevice.sampleRate);
+    DebugMsg("ProxyAudio: matchOutputDeviceSampleRateNoLock changing sample rate to match: %lf", outputDevice.sampleRate);
     // NB: it's important that we not modify OutputDevice until it is no longer playing since
     // we're not using a locking mechanism on its attributes between this function and its IO
     // function.
@@ -4784,6 +4799,8 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
         return;
     }
 
+    DebugMsg("ProxyAudio: matchOutputDeviceSampleRateNoLock about to request device configuration change");
+    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         gPlugIn_Host->RequestDeviceConfigurationChange(gPlugIn_Host, kObjectID_Device, outputDevice.sampleRate, NULL);
     });
@@ -4791,26 +4808,32 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
 
 void ProxyAudioDevice::matchOutputDeviceSampleRate()
 {
+    DebugMsg("ProxyAudio: matchOutputDeviceSampleRate");
     CAMutex::Locker outputMutexLocker(outputDeviceMutex);
     matchOutputDeviceSampleRateNoLock();
 }
 
 void ProxyAudioDevice::setupTargetOutputDevice() {
+    DebugMsg("ProxyAudio: setupTargetOutputDevice");
     AudioDevice newOutputDevice = findTargetOutputAudioDevice();
 
+    DebugMsg("ProxyAudio: setupTargetOutputDevice newOutputDevice: %d", newOutputDevice.id);
     CAMutex::Locker locker(outputDeviceMutex);
     
     if (outputDevice.isValid() && outputDevice.id == newOutputDevice.id
         && outputDevice.bufferFrameSize == outputDeviceBufferFrameSize) {
+        DebugMsg("ProxyAudio: setupTargetOutputDevice no change in device");
         return;
     }
 
+    DebugMsg("ProxyAudio: setupTargetOutputDevice deinitializing old device");
     // NB: it's important that we not modify OutputDevice until it is no longer playing since
     // we're not using a locking mechanism on its attributes between this function and its IO
     // function.
     deinitializeOutputDeviceNoLock();
 
     if (newOutputDevice.isValid()) {
+        DebugMsg("ProxyAudio: setupTargetOutputDevice setting up new device");
         resetInputData();
         outputDevice = newOutputDevice;
         outputDevice.setBufferFrameSize(outputDeviceBufferFrameSize);
@@ -4825,9 +4848,10 @@ void ProxyAudioDevice::setupTargetOutputDevice() {
                                          kAudioObjectPropertyElementMaster,
                                          outputDeviceSampleRateListenerStatic,
                                          this);
+        DebugMsg("ProxyAudio: setupTargetOutputDevice will match sample rate");
         matchOutputDeviceSampleRateNoLock();
     } else {
-        syslog(LOG_WARNING, "ProxyAudio: could not find output device");
+        syslog(LOG_WARNING, "ProxyAudio: setupTargetOutputDevice could not find output device");
     }
 }
 
@@ -4835,26 +4859,35 @@ void ProxyAudioDevice::initializeOutputDevice() {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1000 * NSEC_PER_MSEC),
                    dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
                    ^() {
+                       DebugMsg("ProxyAudio: initializeOutputDevice running in separate thread");
                        setupTargetOutputDevice();
                        setupAudioDevicesListener();
                    });
 }
 
 void ProxyAudioDevice::deinitializeOutputDeviceNoLock() {
+    DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock");
     if (outputDevice.isValid()) {
+        DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock stopping device");
         outputDevice.stop();
+        DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock removing IO proc");
         outputDevice.destroyIOProc();
+        DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock invalidating");
         outputDevice.invalidate();
+    } else {
+        DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock output device is already invalidated");
     }
 }
 
 void ProxyAudioDevice::deinitializeOutputDevice()
 {
+    DebugMsg("ProxyAudio: deinitializeOutputDevice");
     CAMutex::Locker locker(outputDeviceMutex);
     deinitializeOutputDeviceNoLock();
 }
 
 void ProxyAudioDevice::setupAudioDevicesListener() {
+    DebugMsg("ProxyAudio: setupAudioDevicesListener");
     AudioObjectPropertyAddress listenerPropertyAddress = {
         kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
     
@@ -4874,11 +4907,14 @@ void ProxyAudioDevice::setupAudioDevicesListener() {
                (listenerPropertyAddress.mScope) % 0xFF,
                listenerPropertyAddress.mElement);
     }
+    
+    DebugMsg("ProxyAudio: setupAudioDevicesListener finished");
 }
 
 #pragma mark IO Operations
 
 void ProxyAudioDevice::resetInputData() {
+    DebugMsg("ProxyAudio: resetInputData");
     CAMutex::Locker locker(&IOMutex);
     
     if (inputBuffer) {
@@ -4889,6 +4925,7 @@ void ProxyAudioDevice::resetInputData() {
     lastInputBufferFrameSize = -1;
     inputOutputSampleDelta = -1;
     inputFinalFrameTime = -1;
+    DebugMsg("ProxyAudio: resetInputData finished");
 }
 
 OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
@@ -4905,6 +4942,7 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
 
 #pragma unused(inClientID)
     
+    DebugMsg("ProxyAudio: StartIO");
     resetInputData();
 
     CAMutex::Locker locker(stateMutex);
@@ -4924,6 +4962,8 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
         ++gDevice_IOIsRunning;
     }
 
+    DebugMsg("ProxyAudio: StartIO finished");
+    
     return theAnswer;
 }
 
@@ -4934,6 +4974,7 @@ OSStatus ProxyAudioDevice::StopIO(AudioServerPlugInDriverRef inDriver,
     //    once all clients have stopped.
 
 #pragma unused(inClientID)
+    DebugMsg("ProxyAudio: StopIO");
     inputFinalFrameTime = lastInputFrameTime + lastInputBufferFrameSize;
 
     //    declare the local variables
@@ -4963,6 +5004,7 @@ OSStatus ProxyAudioDevice::StopIO(AudioServerPlugInDriverRef inDriver,
             --gDevice_IOIsRunning;
         }
     }
+    DebugMsg("ProxyAudio: StopIO finished");
 
 Done:
     return theAnswer;
@@ -4985,6 +5027,8 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
 
 #pragma unused(inClientID)
 
+    DebugMsg("ProxyAudio: GetZeroTimeStamp");
+    
     //    declare the local variables
     OSStatus theAnswer = 0;
     UInt64 theCurrentHostTime;
@@ -5027,6 +5071,8 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
     }
 
 Done:
+    DebugMsg("ProxyAudio: GetZeroTimeStamp finished");
+    
     return theAnswer;
 }
 
@@ -5212,6 +5258,7 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     }
 
     if (inputOutputSampleDelta == -1) {
+        DebugMsg("ProxyAudio: outputDeviceIOProc recalculating inputOutputSampleDelta");
         Float64 targetFrameTime = (lastInputFrameTime - lastInputBufferFrameSize - currentOutputDeviceBufferFrameSize
                                    - currentOutputDeviceSafetyOffset);
         inputOutputSampleDelta = targetFrameTime - inOutputTime->mSampleTime;
@@ -5371,7 +5418,10 @@ CFStringRef ProxyAudioDevice::copyConfigurationValue(ConfigType type) {
 
 CFStringRef ProxyAudioDevice::copyDeviceNameFromStorage()
 {
+    DebugMsg("ProxyAudio: copyDeviceNameFromStorage");
+    
     if (!gPlugIn_Host) {
+        DebugMsg("ProxyAudio: copyDeviceNameFromStorage no plugin host");
         return nullptr;
     }
     
@@ -5393,6 +5443,8 @@ CFStringRef ProxyAudioDevice::copyDeviceNameFromStorage()
     if (result == NULL) {
         result = CFStringCreateCopy(NULL, CFSTR("Proxy Audio Device"));
     }
+    
+    DebugMsg("ProxyAudio: copyDeviceNameFromStorage finished");
     
     return result;
 }
@@ -5424,6 +5476,8 @@ void ProxyAudioDevice::setDeviceName(CFStringRef newName) {
 }
 
 CFStringRef ProxyAudioDevice::copyDefaultProxyOutputDeviceUID() {
+    DebugMsg("ProxyAudio: copyDefaultProxyOutputDeviceUID");
+    
     // First we check the default output device and make sure it's not the proxy audio device:
     AudioObjectID defaultDevice = AudioDevice::defaultOutputDevice();
     
@@ -5431,6 +5485,7 @@ CFStringRef ProxyAudioDevice::copyDefaultProxyOutputDeviceUID() {
         CFStringSmartRef uid = AudioDevice::copyDeviceUID(defaultDevice);
         
         if (uid && CFStringCompare(uid, CFSTR(kDevice_UID), 0) != kCFCompareEqualTo) {
+            DebugMsg("ProxyAudio: copyDefaultProxyOutputDeviceUID returning default output device");
             return uid;
         }
     }
@@ -5440,14 +5495,20 @@ CFStringRef ProxyAudioDevice::copyDefaultProxyOutputDeviceUID() {
     std::vector<AudioObjectID> outputDevices = AudioDevice::devicesWithOutputCapabilitiesThatAreNotProxyAudioDevice();
     
     if (outputDevices.size() > 0) {
+        DebugMsg("ProxyAudio: copyDefaultProxyOutputDeviceUID returning first viable output device in list");
         return AudioDevice::copyDeviceUID(outputDevices[0]);
     }
+    
+    DebugMsg("ProxyAudio: copyDefaultProxyOutputDeviceUID could not find output device");
     
     return nullptr;
 }
 
 CFStringRef ProxyAudioDevice::copyOutputDeviceUIDFromStorage() {
+    DebugMsg("ProxyAudio: copyOutputDeviceUIDFromStorage");
+    
     if (!gPlugIn_Host) {
+        DebugMsg("ProxyAudio: copyOutputDeviceUIDFromStorage no plugin host");
         return nullptr;
     }
 
@@ -5459,9 +5520,12 @@ CFStringRef ProxyAudioDevice::copyOutputDeviceUIDFromStorage() {
     if (data != NULL && CFGetTypeID(data) == CFStringGetTypeID()
         && CFStringCompare(CFStringRef(CFPropertyListRef(data)), CFSTR(kDevice_UID), 0) != kCFCompareEqualTo) {
         result = CFStringCreateCopy(NULL, CFStringRef(CFPropertyListRef(data)));
+        DebugMsg("ProxyAudio: copyOutputDeviceUIDFromStorage finished with stored output device UID");
         return result;
     }
 
+    DebugMsg("ProxyAudio: copyOutputDeviceUIDFromStorage will return default output device");
+    
     return copyDefaultProxyOutputDeviceUID();
 }
 
@@ -5491,7 +5555,10 @@ void ProxyAudioDevice::setOutputDevice(CFStringRef deviceUID) {
 }
 
 UInt32 ProxyAudioDevice::retrieveOutputDeviceBufferFrameSizeFromStorage() {
+    DebugMsg("ProxyAudio: retrieveOutputDeviceBufferFrameSizeFromStorage");
+    
     if (!gPlugIn_Host) {
+        DebugMsg("ProxyAudio: retrieveOutputDeviceBufferFrameSizeFromStorage no plugin host");
         return kOutputDeviceDefaultBufferFrameSize;
     }
 
@@ -5499,12 +5566,15 @@ UInt32 ProxyAudioDevice::retrieveOutputDeviceBufferFrameSizeFromStorage() {
     gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("outputDeviceBufferFrameSize"), &data);
 
     if (data == NULL || CFGetTypeID(data) != CFNumberGetTypeID()) {
+        DebugMsg("ProxyAudio: retrieveOutputDeviceBufferFrameSizeFromStorage finished returning default buffer frame size");
         return kOutputDeviceDefaultBufferFrameSize;
     }
 
     SInt32 value;
     CFNumberGetValue(CFNumberRef(CFPropertyListRef(data)), kCFNumberSInt32Type, &value);
     value = std::max(value, kOutputDeviceMinBufferFrameSize);
+    
+    DebugMsg("ProxyAudio: retrieveOutputDeviceBufferFrameSizeFromStorage finished returning stored buffer frame size");
     
     return UInt32(value);
 }
