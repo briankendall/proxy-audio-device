@@ -4375,7 +4375,7 @@ OSStatus ProxyAudioDevice::GetControlPropertyData(AudioServerPlugInDriverRef inD
                                    "kAudioBooleanControlPropertyValue for the mute control");
                     {
                         CAMutex::Locker locker(stateMutex);
-                        *((UInt32 *)outData) = gMute_Output_Master_Value ? 1 : 0;
+                        *((UInt32 *)outData) = gMute_Output_Mute ? 1 : 0;
                     }
                     *outDataSize = sizeof(UInt32);
                     break;
@@ -4611,8 +4611,8 @@ OSStatus ProxyAudioDevice::SetControlPropertyData(AudioServerPlugInDriverRef inD
                         "SetControlPropertyData: wrong size for the data for kAudioBooleanControlPropertyValue");
                     {
                         CAMutex::Locker locker(stateMutex);
-                        if (gMute_Output_Master_Value != (*((const UInt32 *)inData) != 0)) {
-                            gMute_Output_Master_Value = *((const UInt32 *)inData) != 0;
+                        if (gMute_Output_Mute != (*((const UInt32 *)inData) != 0)) {
+                            gMute_Output_Mute = *((const UInt32 *)inData) != 0;
                             *outNumberPropertiesChanged = 1;
                             outChangedAddresses[0].mSelector = kAudioBooleanControlPropertyValue;
                             outChangedAddresses[0].mScope = kAudioObjectPropertyScopeGlobal;
@@ -5039,8 +5039,6 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
     //    frames and the host time increments by kDevice_RingBufferSize * gDevice_HostTicksPerFrame.
 
 #pragma unused(inClientID)
-
-    DebugMsg("ProxyAudio: GetZeroTimeStamp");
     
     //    declare the local variables
     OSStatus theAnswer = 0;
@@ -5084,8 +5082,6 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
     }
 
 Done:
-    DebugMsg("ProxyAudio: GetZeroTimeStamp finished");
-    
     return theAnswer;
 }
 
@@ -5252,11 +5248,16 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     UInt32 currentOutputDeviceSafetyOffset = outputDevice.safetyOffset;
     Float64 currentInputDeviceSampleRate;
     UInt32 currentInputDeviceChannelCount;
+    Float32 currentVolumeR, currentVolumeL;
+    bool currentMute;
 
     {
         CAMutex::Locker stateLocker(&stateMutex);
         currentInputDeviceSampleRate = gDevice_SampleRate;
         currentInputDeviceChannelCount = gDevice_ChannelsPerFrame;
+        currentVolumeR = gVolume_Output_R_Value;
+        currentVolumeL = gVolume_Output_L_Value;
+        currentMute = gMute_Output_Mute;
     }
 
     inputCycleCount = 0;
@@ -5283,25 +5284,8 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         return noErr;
     }
 
-    Float64 volumeFactorL = 1.0;
-    Float64 volumeFactorR = 1.0;
-    const Float64 minimumVolumeDb = -25;
-
-    if (gVolume_Output_L_Value <= 0.0) {
-        volumeFactorL = 0.0;
-    } else if (gVolume_Output_L_Value >= 1.0) {
-        volumeFactorL = 1.0;
-    } else {
-        volumeFactorL = pow(10, (1.0 - gVolume_Output_L_Value) * minimumVolumeDb / 10);
-    }
-
-    if (gVolume_Output_R_Value <= 0.0) {
-        volumeFactorR = 0.0;
-    } else if (gVolume_Output_R_Value >= 1.0) {
-        volumeFactorR = 1.0;
-    } else {
-        volumeFactorR = pow(10, (1.0 - gVolume_Output_R_Value) * minimumVolumeDb / 10);
-    }
+    Float32 volumeFactorL = 1.0, volumeFactorR = 1.0;
+    calculateVolumeFactors(currentVolumeL, currentVolumeR, currentMute, volumeFactorL, volumeFactorR);
 
     bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
 
@@ -5328,9 +5312,9 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         UInt32 numChannelsToProcess = std::min(outputChannelCount, currentInputDeviceChannelCount);
 
         for (UInt32 channelIndex = 0; channelIndex < numChannelsToProcess; channelIndex++) {
-            float *in = (float *)workBuffer + channelIndex;
-            float *out = (float *)outOutputData->mBuffers[bufferIndex].mData + channelIndex;
-            long framesize = outputChannelCount * sizeof(float);
+            Float32 *in = (Float32 *)workBuffer + channelIndex;
+            Float32 *out = (Float32 *)outOutputData->mBuffers[bufferIndex].mData + channelIndex;
+            long framesize = outputChannelCount * sizeof(Float32);
 
             for (UInt32 frame = 0; frame < outOutputData->mBuffers[bufferIndex].mDataByteSize; frame += framesize) {
                 *out += (*in * ((channelIndex == 0) ? volumeFactorL : volumeFactorR));
@@ -5341,6 +5325,28 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     }
 
     return noErr;
+}
+
+void ProxyAudioDevice::calculateVolumeFactors(Float32 volumeL,
+                                              Float32 volumeR,
+                                              bool mute,
+                                              Float32 &volumeFactorL,
+                                              Float32 &volumeFactorR) {
+    if (volumeL <= 0.0 || mute) {
+        volumeFactorL = 0.0;
+    } else if (volumeL >= 1.0) {
+        volumeFactorL = 1.0;
+    } else {
+        volumeFactorL = pow(10, (volumeL * (kVolume_MaxDB - kVolume_MinDB) + kVolume_MinDB) / 10);
+    }
+
+    if (volumeR <= 0.0 || mute) {
+        volumeFactorR = 0.0;
+    } else if (volumeR >= 1.0) {
+        volumeFactorR = 1.0;
+    } else {
+        volumeFactorR = pow(10, (volumeR * (kVolume_MaxDB - kVolume_MinDB) + kVolume_MinDB) / 10);
+    }
 }
 
 OSStatus ProxyAudioDevice::EndIOOperation(AudioServerPlugInDriverRef inDriver,

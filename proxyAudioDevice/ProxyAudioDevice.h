@@ -76,6 +76,11 @@ class ProxyAudioDevice {
                                 const AudioTimeStamp *inInputTime,
                                 AudioBufferList *outOutputData,
                                 const AudioTimeStamp *inOutputTime);
+    void calculateVolumeFactors(Float32 volumeL,
+                                Float32 volumeR,
+                                bool mute,
+                                Float32 &volumeFactorL,
+                                Float32 &volumeFactorR);
     bool isConfigurationString(CFStringRef val);
     void parseConfigurationString(CFStringRef configString, ConfigType &action, CFStringRef &value);
     void setConfigurationValue(ConfigType action, CFStringRef value);
@@ -488,11 +493,11 @@ class ProxyAudioDevice {
     Float64 gDevice_AnchorSampleTime = 0.0;
     UInt64 gDevice_AnchorHostTime = 0;
     bool gStream_Output_IsActive = true;
-    const Float32 kVolume_MinDB = -96.0;
-    const Float32 kVolume_MaxDB = 6.0;
+    const Float32 kVolume_MinDB = -25.0;
+    const Float32 kVolume_MaxDB = 0.0;
     Float32 gVolume_Output_L_Value = 0.0;
     Float32 gVolume_Output_R_Value = 0.0;
-    bool gMute_Output_Master_Value = false;
+    bool gMute_Output_Mute = false;
     const UInt32 gDevice_BytesPerFrameInChannel = 4;
     const UInt32 gDevice_ChannelsPerFrame = 2;
     const UInt32 gDevice_SafetyOffset = 0;
