@@ -5306,10 +5306,21 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
 
     if (overrun && inputFinalFrameTime == -1 && startFrame >= inputBuffer->mStartFrame) {
-        DebugMsg("ProxyAudio: output unexpected overrun");
-        DebugMsg("ProxyAudio: output frame: %lf", startFrame);
-        DebugMsg(
-            "ProxyAudio: output buffer start: %llu    end: %llu", inputBuffer->mStartFrame, inputBuffer->mEndFrame);
+        // Since this warning could conceivably happen every cycle, explicitly make it
+        // only appear once every five seconds at most
+        static time_t lastBufferOverrunWarning = 0;
+        time_t seconds;
+        time(&seconds);
+
+        if ((seconds - lastBufferOverrunWarning) > 5) {
+            lastBufferOverrunWarning = seconds;
+            syslog(LOG_WARNING, "ProxyAudio: output unexpected overrun");
+            syslog(LOG_WARNING, "ProxyAudio: output frame: %lf", startFrame);
+            syslog(LOG_WARNING,
+                   "ProxyAudio: output buffer start: %llu    end: %llu",
+                   inputBuffer->mStartFrame,
+                   inputBuffer->mEndFrame);
+        }
     }
 
     for (UInt32 bufferIndex = 0; bufferIndex < outOutputData->mNumberBuffers; bufferIndex++) {
