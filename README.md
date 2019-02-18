@@ -8,9 +8,9 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
 
 2. Copy ProxyAudioDriver.driver to: /Library/Audio/Plug-Ins/HAL
 
-3. Either reboot your system or reboot Core Audio by opening a terminal window and executing this command:
+3. Either reboot your system or reboot Core Audio by opening a terminal window and executing this command and entering your administrator password when prompted:
 
-        launchctl kickstart -k system/com.apple.audio.coreaudiod
+        sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
 
 4. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
 
