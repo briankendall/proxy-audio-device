@@ -4771,8 +4771,8 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
         return;
     }
 
-    Float64 newOutputSampleRate, currentInputSampleRate;
-    OSStatus err = outputDevice.getDoublePropertyData(newOutputSampleRate,
+    Float64 currentInputSampleRate;
+    OSStatus err = outputDevice.getDoublePropertyData(outputDevice.sampleRate,
                                                       kAudioDevicePropertyNominalSampleRate,
                                                       kAudioObjectPropertyScopeGlobal,
                                                       kAudioObjectPropertyElementMaster);
@@ -4786,8 +4786,8 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
         CAMutex::Locker stateMutexLocker(stateMutex);
         currentInputSampleRate = gDevice_SampleRate;
     }
-
-    if (currentInputSampleRate == newOutputSampleRate) {
+    
+    if (currentInputSampleRate == outputDevice.sampleRate) {
         outputDevice.start();
         return;
     }
@@ -4796,6 +4796,7 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     // NB: it's important that we not modify OutputDevice until it is no longer playing since
     // we're not using a locking mechanism on its attributes between this function and its IO
     // function.
+    
     outputDevice.stop();
     resetInputData();
     outputDevice.updateStreamInfo();
@@ -4970,11 +4971,14 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
         gDevice_NumberTimeStamps = 0;
         gDevice_AnchorSampleTime = 0;
         gDevice_AnchorHostTime = mach_absolute_time();
+        gDevice_ElapsedTicks = 0;
+        outputAccumulatedRateRatio = 0.0;
+        outputAccumulatedRateRatioSamples = 0;
     } else {
         //    IO is already running, so just bump the counter
         ++gDevice_IOIsRunning;
     }
-
+    
     DebugMsg("ProxyAudio: StartIO finished");
     
     return theAnswer;
@@ -5058,27 +5062,41 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
                    "GetZeroTimeStamp: bad device ID");
 
     {
-        // Is using this mutex really necessary? I'm basically just copying what was in the NullAudio example
-        // plugin.
         CAMutex::Locker locker(&getZeroTimestampMutex);
-
+        
         //    get the current host time
         theCurrentHostTime = mach_absolute_time();
 
+        // In order to keep the input and output IO in sync, we keep a running
+        // average of the output IO proc's mRateScalar field for its output time.
+        // Then each time we calculate the next zero timestamp we slightly adjust
+        // the tick count for our ring buffer by however much the output IO proc
+        // deviated from its sample rate.
+        
+        Float64 rateRatio = 1.0;
+        
+        if (outputAccumulatedRateRatioSamples > 0) {
+            rateRatio = outputAccumulatedRateRatio / outputAccumulatedRateRatioSamples;
+        }
+        
         //    calculate the next host time
-        theHostTicksPerRingBuffer = gDevice_HostTicksPerFrame * ((Float64)kDevice_RingBufferSize);
-        theHostTickOffset = ((Float64)(gDevice_NumberTimeStamps + 1)) * theHostTicksPerRingBuffer;
+        theHostTicksPerRingBuffer =
+            gDevice_HostTicksPerFrame * ((Float64)kDevice_RingBufferSize) * rateRatio;
+        theHostTickOffset = gDevice_ElapsedTicks + theHostTicksPerRingBuffer;
         theNextHostTime = gDevice_AnchorHostTime + ((UInt64)theHostTickOffset);
 
         //    go to the next time if the next host time is less than the current time
         if (theNextHostTime <= theCurrentHostTime) {
             ++gDevice_NumberTimeStamps;
+            gDevice_ElapsedTicks += theHostTicksPerRingBuffer;
         }
 
         //    set the return values
         *outSampleTime = gDevice_NumberTimeStamps * kDevice_RingBufferSize;
-        *outHostTime = gDevice_AnchorHostTime + (((Float64)gDevice_NumberTimeStamps) * theHostTicksPerRingBuffer);
+        *outHostTime = gDevice_AnchorHostTime + gDevice_ElapsedTicks;
         *outSeed = 1;
+        outputAccumulatedRateRatio = 0.0;
+        outputAccumulatedRateRatioSamples = 0;
     }
 
 Done:
@@ -5204,6 +5222,7 @@ OSStatus ProxyAudioDevice::DoIOOperation(AudioServerPlugInDriverRef inDriver,
             CAMutex::Locker locker(IOMutex);
 
             inputBuffer->Store((const Byte *)ioMainBuffer, inIOBufferFrameSize, inIOCycleInfo->mOutputTime.mSampleTime);
+            
             lastInputFrameTime = inIOCycleInfo->mOutputTime.mSampleTime;
             lastInputBufferFrameSize = inIOBufferFrameSize;
             inputCycleCount += 1;
@@ -5259,7 +5278,18 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         currentVolumeL = gVolume_Output_L_Value;
         currentMute = gMute_Output_Mute;
     }
-
+    
+    {
+        CAMutex::Locker locker(&getZeroTimestampMutex);
+        
+        // We don't need to keep taking samples of the device's ratio past
+        // 10000 samples. If we get that far then the device is idling.
+        if (outputAccumulatedRateRatioSamples < 10000) {
+            outputAccumulatedRateRatio += inOutputTime->mRateScalar;
+            outputAccumulatedRateRatioSamples += 1;
+        }
+    }
+    
     inputCycleCount = 0;
 
     if (lastInputFrameTime < 0 || lastInputBufferFrameSize < 0) {
@@ -5276,18 +5306,30 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         Float64 targetFrameTime = (lastInputFrameTime - lastInputBufferFrameSize - currentOutputDeviceBufferFrameSize
                                    - currentOutputDeviceSafetyOffset);
         inputOutputSampleDelta = targetFrameTime - inOutputTime->mSampleTime;
+        smallestFramesToBufferEnd = -1;
     }
-
+        
     Float64 startFrame = inOutputTime->mSampleTime + inputOutputSampleDelta;
 
     if (inputFinalFrameTime != -1 && startFrame >= inputFinalFrameTime) {
         return noErr;
     }
 
-    Float32 volumeFactorL = 1.0, volumeFactorR = 1.0;
-    calculateVolumeFactors(currentVolumeL, currentVolumeR, currentMute, volumeFactorL, volumeFactorR);
-
     bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
+
+#if DEBUG
+    // This is just some debugging info to tell when we might be gradually
+    // approaching the end of the input buffer and headed for a buffer
+    // overrun
+    SInt64 framesToBufferEnd =
+        inputBuffer->mEndFrame - (SInt64(startFrame) + SInt64(currentOutputDeviceBufferFrameSize));
+
+    if (smallestFramesToBufferEnd == -1
+        || (framesToBufferEnd < smallestFramesToBufferEnd && smallestFramesToBufferEnd >= 0)) {
+        smallestFramesToBufferEnd = framesToBufferEnd;
+        DebugMsg("ProxyAudio: frames to buffer end shrunk, is now: %lld", smallestFramesToBufferEnd);
+    }
+#endif
 
     if (overrun && inputFinalFrameTime == -1 && startFrame >= inputBuffer->mStartFrame) {
         // Since this warning could conceivably happen every cycle, explicitly make it
@@ -5295,7 +5337,7 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         static time_t lastBufferOverrunWarning = 0;
         time_t seconds;
         time(&seconds);
-
+        
         if ((seconds - lastBufferOverrunWarning) > 5) {
             lastBufferOverrunWarning = seconds;
             syslog(LOG_WARNING, "ProxyAudio: output unexpected overrun");
@@ -5306,6 +5348,9 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
                    inputBuffer->mEndFrame);
         }
     }
+    
+    Float32 volumeFactorL = 1.0, volumeFactorR = 1.0;
+    calculateVolumeFactors(currentVolumeL, currentVolumeR, currentMute, volumeFactorL, volumeFactorR);
 
     for (UInt32 bufferIndex = 0; bufferIndex < outOutputData->mNumberBuffers; bufferIndex++) {
         UInt32 outputChannelCount = outOutputData->mBuffers[bufferIndex].mNumberChannels;

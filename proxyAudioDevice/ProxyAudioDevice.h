@@ -4,6 +4,7 @@
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <CoreAudio/CoreAudio.h>
 #include <vector>
+#include <atomic>
 
 #include "AudioDevice.h"
 #include "CAMutex.h"
@@ -480,6 +481,9 @@ class ProxyAudioDevice {
     CFStringRef boxName = NULL;
     CFStringRef outputDeviceUID = NULL;
     UInt32 outputDeviceBufferFrameSize = kOutputDeviceDefaultBufferFrameSize;
+    SInt64 smallestFramesToBufferEnd = -1;
+    Float64 outputAccumulatedRateRatio = 0.0;
+    UInt64 outputAccumulatedRateRatioSamples = 0;
     
     UInt32 gPlugIn_RefCount = 0;
     AudioServerPlugInHostRef gPlugIn_Host = NULL;
@@ -491,6 +495,7 @@ class ProxyAudioDevice {
     Float64 gDevice_HostTicksPerFrame = 0.0;
     UInt64 gDevice_NumberTimeStamps = 0;
     Float64 gDevice_AnchorSampleTime = 0.0;
+    Float64 gDevice_ElapsedTicks = 0.0;
     UInt64 gDevice_AnchorHostTime = 0;
     bool gStream_Output_IsActive = true;
     const Float32 kVolume_MinDB = -25.0;
