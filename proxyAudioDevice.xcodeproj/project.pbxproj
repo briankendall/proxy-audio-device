@@ -69,6 +69,7 @@
 		7799CEB0220EB25A00A3DB04 /* CAHostTimeBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CAHostTimeBase.h; sourceTree = "<group>"; };
 		7799CEB3220EB28800A3DB04 /* CADebugPrintf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CADebugPrintf.h; sourceTree = "<group>"; };
 		7799CEB4220EB28800A3DB04 /* CADebugPrintf.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CADebugPrintf.cpp; sourceTree = "<group>"; };
+		77B27C6223329F2400DA04FD /* Proxy Audio Device Settings.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Proxy Audio Device Settings.entitlements"; sourceTree = "<group>"; };
 		77C548122211F5240041623A /* ProxyAudioDevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProxyAudioDevice.h; sourceTree = "<group>"; };
 		77CAB5622212252F0092B2B0 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		77CAB568221534640092B2B0 /* Proxy Audio Device Settings.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Proxy Audio Device Settings.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -127,6 +128,7 @@
 		2D74779B1578162B00412279 = {
 			isa = PBXGroup;
 			children = (
+				77B27C6223329F2400DA04FD /* Proxy Audio Device Settings.entitlements */,
 				77CAB57D22153C9A0092B2B0 /* shared */,
 				2D616EF015B8C82500D598BD /* proxyAudioDevice */,
 				77CAB569221534640092B2B0 /* ProxyAudioDeviceSettings */,
@@ -256,6 +258,14 @@
 						CreatedOnToolsVersion = 10.1;
 						DevelopmentTeam = F8M4YUY649;
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.HardenedRuntime = {
+								enabled = 1;
+							};
+							com.apple.Sandbox = {
+								enabled = 0;
+							};
+						};
 					};
 				};
 			};
@@ -611,12 +621,13 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_ENTITLEMENTS = ProxyAudioDeviceSettings/Proxy_Audio_Device_Settings.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "Proxy Audio Device Settings.entitlements";
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				DEVELOPMENT_TEAM = F8M4YUY649;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
@@ -647,13 +658,14 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_ENTITLEMENTS = ProxyAudioDeviceSettings/Proxy_Audio_Device_Settings.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "Proxy Audio Device Settings.entitlements";
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = F8M4YUY649;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -688,13 +700,14 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_ENTITLEMENTS = ProxyAudioDeviceSettings/Proxy_Audio_Device_Settings.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "Proxy Audio Device Settings.entitlements";
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = F8M4YUY649;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
