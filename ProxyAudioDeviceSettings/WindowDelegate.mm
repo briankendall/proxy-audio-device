@@ -14,8 +14,7 @@ int onDevicesChanged(AudioObjectID inObjectID,
     int initializationAttemptInterval;
 }
 
-- (void)awakeFromNib
-{
+- (void)awakeFromNib {
     self.deviceNameTextField.stringValue = NSLocalizedString(@"< Loading... >", nil);
     self.deviceNameTextField.enabled = NO;
     self.outputDeviceComboBox.enabled = NO;
@@ -24,14 +23,7 @@ int onDevicesChanged(AudioObjectID inObjectID,
     [self keepTryingToInitializeUntilSuccess];
 }
 
-- (IBAction)reload:(id)sender
-{
-#pragma unused(sender)
-    [self initialize];
-}
-
-- (void)keepTryingToInitializeUntilSuccess
-{
+- (void)keepTryingToInitializeUntilSuccess {
     // For some reason, sometimes when the app launches right after the system boots we'll get bunk data
     // for all of the connected audio devices. If that happens then we'll try to initialize again after
     // a few seconds. We're initially waiting three seconds because that seems to work. Using less time
@@ -46,10 +38,17 @@ int onDevicesChanged(AudioObjectID inObjectID,
     }
 }
 
-- (bool)initialize
-{
+- (bool)initialize {
     if (![self setCurrentProcessAsConfigurator]) {
         return false;
+    }
+    
+    self.deviceNameTextField.stringValue = [self currentDeviceName];
+    
+    if (![self proxyAudioDeviceAvailable]) {
+        // It's expected that we won't find the Proxy Audio Device if it's not installed, so this
+        // technically isn't a failure case where we'd want to try initializing the app again.
+        return true;
     }
     
     if (![self refreshOutputDevices]) {
@@ -60,9 +59,7 @@ int onDevicesChanged(AudioObjectID inObjectID,
         return false;
     }
     
-    self.deviceNameTextField.stringValue = [self currentDeviceName];
     [self.bufferSizeComboBox selectItemWithObjectValue:[self currentOutputDeviceBufferFrameSize]];
-    
     self.deviceNameTextField.enabled = YES;
     self.outputDeviceComboBox.enabled = YES;
     self.bufferSizeComboBox.enabled = YES;
@@ -75,7 +72,9 @@ int onDevicesChanged(AudioObjectID inObjectID,
     
     if (proxyAudioBox == kAudioObjectUnknown) {
         NSLog(@"Error: unable to find proxy audio device");
-        return false;
+        // It's expected that we won't find the Proxy Audio Device if it's not installed, so this
+        // technically isn't a failure case where we'd want to try initializing the app again.
+        return true;
     }
     
     if (!AudioDevice::setIdentifyValue(proxyAudioBox, getpid())) {
@@ -111,6 +110,10 @@ int onDevicesChanged(AudioObjectID inObjectID,
     }
     
     return true;
+}
+
+- (bool)proxyAudioDeviceAvailable {
+    return AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID)) != kAudioObjectUnknown;
 }
 
 - (NSString *)currentDeviceName {
