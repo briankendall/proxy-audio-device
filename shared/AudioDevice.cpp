@@ -354,9 +354,9 @@ AudioDeviceID AudioDevice::audioDeviceIDForBoxUID(CFStringRef uid) {
     return audioDeviceIDForUID(uid, kAudioHardwarePropertyTranslateUIDToBox);
 }
 
-void AudioDevice::setIdentifyValue(AudioDeviceID device, SInt32 value) {
+bool AudioDevice::setIdentifyValue(AudioDeviceID device, SInt32 value) {
     AudioObjectPropertyAddress setIdentifyAddr = {
         kAudioObjectPropertyIdentify, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
 
-    AudioObjectSetPropertyData(device, &setIdentifyAddr, 0, NULL, sizeof(value), &value);
+    return AudioObjectSetPropertyData(device, &setIdentifyAddr, 0, NULL, sizeof(value), &value) == noErr;
 }

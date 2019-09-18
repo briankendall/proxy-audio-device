@@ -11,20 +11,79 @@ int onDevicesChanged(AudioObjectID inObjectID,
 
 @implementation WindowDelegate {
     std::vector<AudioDeviceID> currentDeviceList;
+    int initializationAttemptInterval;
 }
 
-- (void)awakeFromNib {
-    [self setCurrentProcessAsConfigurator];
-    [self setupListenerForCurrentAudioDevices];
-    [self refreshOutputDevices];
+- (void)awakeFromNib
+{
+    self.deviceNameTextField.stringValue = NSLocalizedString(@"< Loading... >", nil);
+    self.deviceNameTextField.enabled = NO;
+    self.outputDeviceComboBox.enabled = NO;
+    self.bufferSizeComboBox.enabled = NO;
+    initializationAttemptInterval = 3;
+    [self keepTryingToInitializeUntilSuccess];
+}
+
+- (IBAction)reload:(id)sender
+{
+#pragma unused(sender)
+    [self initialize];
+}
+
+- (void)keepTryingToInitializeUntilSuccess
+{
+    // For some reason, sometimes when the app launches right after the system boots we'll get bunk data
+    // for all of the connected audio devices. If that happens then we'll try to initialize again after
+    // a few seconds. We're initially waiting three seconds because that seems to work. Using less time
+    // can actually cause the audio server to crash, so we want to be careful not to query it too often!
+    bool success = [self initialize];
+    
+    if (!success) {
+        NSLog(@"NB: failed to initialize, will try again in a sec...");
+        [NSTimer scheduledTimerWithTimeInterval:initializationAttemptInterval target:self selector:@selector(keepTryingToInitializeUntilSuccess) userInfo:nil repeats:NO];
+        // Increase the length of time between attempting to initialize by two seconds each time, just to be safe:
+        initializationAttemptInterval += 2;
+    }
+}
+
+- (bool)initialize
+{
+    if (![self setCurrentProcessAsConfigurator]) {
+        return false;
+    }
+    
+    if (![self refreshOutputDevices]) {
+        return false;
+    }
+    
+    if (![self setupListenerForCurrentAudioDevices]) {
+        return false;
+    }
     
     self.deviceNameTextField.stringValue = [self currentDeviceName];
     [self.bufferSizeComboBox selectItemWithObjectValue:[self currentOutputDeviceBufferFrameSize]];
+    
+    self.deviceNameTextField.enabled = YES;
+    self.outputDeviceComboBox.enabled = YES;
+    self.bufferSizeComboBox.enabled = YES;
+    
+    return true;
 }
 
-- (void)setCurrentProcessAsConfigurator {
+- (bool)setCurrentProcessAsConfigurator {
     AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
-    AudioDevice::setIdentifyValue(proxyAudioBox, getpid());
+    
+    if (proxyAudioBox == kAudioObjectUnknown) {
+        NSLog(@"Error: unable to find proxy audio device");
+        return false;
+    }
+    
+    if (!AudioDevice::setIdentifyValue(proxyAudioBox, getpid())) {
+        NSLog(@"Error: unable to set current process as configurator");
+        return false;
+    }
+    
+    return true;
 }
 
 int onDevicesChanged(AudioObjectID inObjectID,
@@ -40,7 +99,7 @@ int onDevicesChanged(AudioObjectID inObjectID,
     return noErr;
 }
 
-- (void)setupListenerForCurrentAudioDevices {
+- (bool)setupListenerForCurrentAudioDevices {
     AudioObjectPropertyAddress listenerPropertyAddress = {
         kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
     OSStatus err =
@@ -48,7 +107,10 @@ int onDevicesChanged(AudioObjectID inObjectID,
 
     if (err != noErr) {
         NSLog(@"Error: could not set up listener for audio devices changing");
+        return false;
     }
+    
+    return true;
 }
 
 - (NSString *)currentDeviceName {
@@ -82,19 +144,34 @@ int onDevicesChanged(AudioObjectID inObjectID,
     return AudioDevice::audioDeviceIDForDeviceUID((__bridge_retained CFStringRef)outputDeviceUID);
 }
 
-- (void)refreshOutputDevices {
+- (bool)refreshOutputDevices {
+    bool success = false;
     [self.outputDeviceComboBox removeAllItems];
     currentDeviceList = AudioDevice::devicesWithOutputCapabilitiesThatAreNotProxyAudioDevice();
     AudioDeviceID outputDevice = [self currentOutputDevice];
     
     for (unsigned int i = 0; i < currentDeviceList.size(); ++i) {
         NSString *deviceName = (__bridge_transfer NSString *)AudioDevice::copyObjectName(currentDeviceList[i]);
+        
+        if (!deviceName) {
+            NSLog(@"Note: got null device name for audio device with device with ID: %d", currentDeviceList[i]);
+            continue;
+        }
+        
         [self.outputDeviceComboBox addItemWithObjectValue:deviceName];
         
         if (outputDevice == currentDeviceList[i]) {
             [self.outputDeviceComboBox selectItemAtIndex:i];
         }
+        
+        success = true;
     }
+    
+    if (!success) {
+        NSLog(@"Error: failed to get any information about current output devices!");
+    }
+    
+    return success;
 }
 
 - (IBAction)outputDeviceSelected:(id)sender {

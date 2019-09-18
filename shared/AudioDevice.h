@@ -38,7 +38,7 @@ class AudioDevice {
     static AudioDeviceID audioDeviceIDForUID(CFStringRef uid, AudioObjectPropertySelector selector);
     static AudioDeviceID audioDeviceIDForDeviceUID(CFStringRef uid);
     static AudioDeviceID audioDeviceIDForBoxUID(CFStringRef uid);
-    static void setIdentifyValue(AudioDeviceID device, SInt32 value);
+    static bool setIdentifyValue(AudioDeviceID device, SInt32 value);
 
     AudioObjectID id;
     bool isOutput;
