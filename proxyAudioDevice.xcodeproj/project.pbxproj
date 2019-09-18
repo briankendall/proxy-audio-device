@@ -531,6 +531,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
 				DEVELOPMENT_TEAM = F8M4YUY649;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -542,6 +543,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.briankendall.ProxyAudioDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_SWIFT_SYMBOLS = NO;
 				WRAPPER_EXTENSION = driver;
 			};
 			name = Release;
@@ -552,6 +555,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
 				DEVELOPMENT_TEAM = F8M4YUY649;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -563,6 +567,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.briankendall.ProxyAudioDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_SWIFT_SYMBOLS = NO;
 				WRAPPER_EXTENSION = driver;
 			};
 			name = Debug;
@@ -573,6 +579,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
 				DEVELOPMENT_TEAM = F8M4YUY649;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -584,6 +591,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.briankendall.ProxyAudioDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_SWIFT_SYMBOLS = NO;
 				WRAPPER_EXTENSION = driver;
 			};
 			name = "Debug-Opt";
@@ -619,6 +628,8 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "net.briankendall.Proxy-Audio-Device-Settings";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_SWIFT_SYMBOLS = NO;
 			};
 			name = Release;
 		};
@@ -658,6 +669,8 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "net.briankendall.Proxy-Audio-Device-Settings";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_SWIFT_SYMBOLS = NO;
 			};
 			name = Debug;
 		};
@@ -697,6 +710,8 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "net.briankendall.Proxy-Audio-Device-Settings";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_SWIFT_SYMBOLS = NO;
 			};
 			name = "Debug-Opt";
 		};
