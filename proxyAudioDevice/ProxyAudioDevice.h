@@ -462,11 +462,14 @@ class ProxyAudioDevice {
                                     const void *inData,
                                     UInt32 *outNumberPropertiesChanged,
                                     AudioObjectPropertyAddress outChangedAddresses[2]);
+    dispatch_queue_t AudioOutputDispatchQueue();
+    void ExecuteInAudioOutputThread(void (^block)());
     
     CAMutex stateMutex = CAMutex("ProxyAudioStateMutex");
     CAMutex IOMutex = CAMutex("ProxyAudioIOMutex");
     CAMutex outputDeviceMutex = CAMutex("ProxyAudioOutputDeviceMutex");
     CAMutex getZeroTimestampMutex = CAMutex("ProxyAudioGetZeroTimestampMutex");
+    dispatch_queue_t audioOutputQueue = NULL;
     AudioRingBuffer *inputBuffer = NULL;
     Byte *workBuffer = NULL;
     AudioDevice outputDevice;

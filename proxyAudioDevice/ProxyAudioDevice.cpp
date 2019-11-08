@@ -555,6 +555,11 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
         boxName = CFStringCreateCopy(NULL, CFSTR("Proxy Audio Box"));
     }
 
+    dispatch_queue_attr_t priorityAttribute = dispatch_queue_attr_make_with_qos_class(
+        DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, -1
+    );
+    audioOutputQueue = dispatch_queue_create("net.briankendall.ProxyAudioDevice.audioOutputQueue", priorityAttribute);
+    
     deviceName = copyDeviceNameFromStorage();
     outputDeviceUID = copyOutputDeviceUIDFromStorage();
     outputDeviceBufferFrameSize = retrieveOutputDeviceBufferFrameSizeFromStorage();
@@ -2294,7 +2299,7 @@ OSStatus ProxyAudioDevice::SetBoxPropertyData(AudioServerPlugInDriverRef inDrive
                         outChangedAddresses[1].mElement = kAudioObjectPropertyElementMaster;
 
                         //    but it also means that the device list has changed for the plug-in too
-                        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^() {
+                        ExecuteInAudioOutputThread(^() {
                             AudioObjectPropertyAddress theAddress = {kAudioPlugInPropertyDeviceList,
                                                                      kAudioObjectPropertyScopeGlobal,
                                                                      kAudioObjectPropertyElementMaster};
@@ -3183,7 +3188,7 @@ OSStatus ProxyAudioDevice::SetDevicePropertyData(AudioServerPlugInDriverRef inDr
                 //    we dispatch this so that the change can happen asynchronously
                 theOldSampleRate = *((const Float64 *)inData);
                 theNewSampleRate = (UInt64)theOldSampleRate;
-                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                ExecuteInAudioOutputThread(^{
                     gPlugIn_Host->RequestDeviceConfigurationChange(
                         gPlugIn_Host, kObjectID_Device, theNewSampleRate, NULL);
                 });
@@ -3733,7 +3738,7 @@ OSStatus ProxyAudioDevice::SetStreamPropertyData(AudioServerPlugInDriverRef inDr
                 //    we dispatch this so that the change can happen asynchronously
                 theOldSampleRate = ((const AudioStreamBasicDescription *)inData)->mSampleRate;
                 theNewSampleRate = (UInt64)theOldSampleRate;
-                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                ExecuteInAudioOutputThread(^{
                     gPlugIn_Host->RequestDeviceConfigurationChange(
                         gPlugIn_Host, kObjectID_Device, theNewSampleRate, NULL);
                 });
@@ -4808,7 +4813,7 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
 
     DebugMsg("ProxyAudio: matchOutputDeviceSampleRateNoLock about to request device configuration change");
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    ExecuteInAudioOutputThread(^{
         gPlugIn_Host->RequestDeviceConfigurationChange(gPlugIn_Host, kObjectID_Device, outputDevice.sampleRate, NULL);
     });
 }
@@ -4864,7 +4869,7 @@ void ProxyAudioDevice::setupTargetOutputDevice() {
 
 void ProxyAudioDevice::initializeOutputDevice() {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1000 * NSEC_PER_MSEC),
-                   dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+                   AudioOutputDispatchQueue(),
                    ^() {
                        // Any initialization that involves calling CoreAudio APIs must be done here
                        // in a separate thread from the rest of the driver. Otherwise we'll get
@@ -5539,7 +5544,7 @@ void ProxyAudioDevice::setDeviceName(CFStringRef newName) {
         deviceName = CFStringCreateCopy(NULL, newName);
     }
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^() {
+    ExecuteInAudioOutputThread(^() {
         CAMutex::Locker locker(stateMutex);
         
         gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("deviceName"), deviceName);
@@ -5619,12 +5624,12 @@ void ProxyAudioDevice::setOutputDevice(CFStringRef deviceUID) {
         outputDeviceUID = CFStringCreateCopy(NULL, deviceUID); 
     }
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    ExecuteInAudioOutputThread(^{
         CAMutex::Locker locker(&stateMutex);
         gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("outputDeviceUID"), outputDeviceUID);
     });
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    ExecuteInAudioOutputThread(^{
         setupTargetOutputDevice();
     });
 }
@@ -5666,7 +5671,15 @@ void ProxyAudioDevice::setOutputDeviceBufferFrameSize(UInt32 newSize) {
         gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("outputDeviceBufferFrameSize"), newSizeRef);
     }
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    ExecuteInAudioOutputThread(^{
         setupTargetOutputDevice();
     });
+}
+
+dispatch_queue_t ProxyAudioDevice::AudioOutputDispatchQueue() {
+    return audioOutputQueue;
+}
+
+void ProxyAudioDevice::ExecuteInAudioOutputThread(void (^block)()) {
+    dispatch_async(AudioOutputDispatchQueue(), block);
 }
