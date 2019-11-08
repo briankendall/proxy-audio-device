@@ -9,6 +9,7 @@
 #include "AudioRingBuffer.h"
 #include "CFTypeHelpers.h"
 #include "debugHelpers.h"
+#include "utilities.h"
 
 #pragma mark Utility Functions
 
@@ -559,6 +560,11 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
         DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, -1
     );
     audioOutputQueue = dispatch_queue_create("net.briankendall.ProxyAudioDevice.audioOutputQueue", priorityAttribute);
+    
+    inputMonitoringTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, audioOutputQueue);
+    dispatch_source_set_timer(inputMonitoringTimer, dispatch_walltime(NULL, 0), 500ull * NSEC_PER_MSEC, 20ull * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(inputMonitoringTimer, ^{ monitorUserActivity(); });
+    dispatch_resume(inputMonitoringTimer);
     
     deviceName = copyDeviceNameFromStorage();
     outputDeviceUID = copyOutputDeviceUIDFromStorage();
@@ -4768,24 +4774,33 @@ int ProxyAudioDevice::devicesListenerProc(AudioObjectID inObjectID,
     return noErr;
 }
 
-void ProxyAudioDevice::updateOutputDevicePlayState() {
+void ProxyAudioDevice::updateOutputDeviceStartedState() {
+    static bool userIsIdlePrevious = false;
+    
     if (!outputDevice.isValid()) {
         return;
     }
     
-    bool inputIOIsRunning;
-    {
-        CAMutex::Locker locker(stateMutex);
-        inputIOIsRunning = (gDevice_IOIsRunning > 0);
+    bool userIsIdle = (getUserIdleTimeInterval() > 5);
+    bool shouldStart = (outputDeviceReady &&
+                        (inputIOIsActive || !userIsIdle));
+    
+    if (userIsIdle && !userIsIdlePrevious) {
+        DebugMsg("ProxyAudio: detected user is now idle");
+    } else if (!userIsIdle && userIsIdlePrevious) {
+        DebugMsg("ProxyAudio: detected user is now active");
     }
     
-    if (outputDeviceReady && inputIOIsRunning > 0) {
+    if (!outputDevice.isStarted && shouldStart) {
         DebugMsg("ProxyAudio: starting outputDevice");
         outputDevice.start();
-    } else {
+    } else if (outputDevice.isStarted && !shouldStart) {
         DebugMsg("ProxyAudio: stopping outputDevice");
         outputDevice.stop();
+        resetInputData();
     }
+    
+    userIsIdlePrevious = userIsIdle;
 }
 
 void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
@@ -4814,7 +4829,7 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     
     if (currentInputSampleRate == outputDevice.sampleRate) {
         outputDeviceReady = true;
-        updateOutputDevicePlayState();
+        updateOutputDeviceStartedState();
         return;
     }
 
@@ -4824,7 +4839,7 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     // function.
     
     outputDeviceReady = false;
-    updateOutputDevicePlayState();
+    updateOutputDeviceStartedState();
     
     resetInputData();
     outputDevice.updateStreamInfo();
@@ -4968,7 +4983,6 @@ void ProxyAudioDevice::resetInputData() {
     lastInputBufferFrameSize = -1;
     inputOutputSampleDelta = -1;
     inputFinalFrameTime = -1;
-    DebugMsg("ProxyAudio: resetInputData finished");
 }
 
 OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
@@ -5008,7 +5022,8 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
         ++gDevice_IOIsRunning;
     }
     
-    ExecuteInAudioOutputThread(^ () { updateOutputDevicePlayState(); });
+    inputIOIsActive = (gDevice_IOIsRunning > 0);
+    ExecuteInAudioOutputThread(^ () { updateOutputDeviceStartedState(); });
     
     DebugMsg("ProxyAudio: StartIO finished");
     
@@ -5053,7 +5068,8 @@ OSStatus ProxyAudioDevice::StopIO(AudioServerPlugInDriverRef inDriver,
         }
     }
     
-    ExecuteInAudioOutputThread(^ () { updateOutputDevicePlayState(); });
+    inputIOIsActive = (gDevice_IOIsRunning > 0);
+    ExecuteInAudioOutputThread(^ () { updateOutputDeviceStartedState(); });
     
     DebugMsg("ProxyAudio: StopIO finished");
 
@@ -5342,7 +5358,7 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         inputOutputSampleDelta = targetFrameTime - inOutputTime->mSampleTime;
         smallestFramesToBufferEnd = -1;
     }
-        
+
     Float64 startFrame = inOutputTime->mSampleTime + inputOutputSampleDelta;
 
     if (inputFinalFrameTime != -1 && startFrame >= inputFinalFrameTime) {
@@ -5703,6 +5719,13 @@ void ProxyAudioDevice::setOutputDeviceBufferFrameSize(UInt32 newSize) {
     ExecuteInAudioOutputThread(^{
         setupTargetOutputDevice();
     });
+}
+
+void ProxyAudioDevice::monitorUserActivity() {
+    {
+        CAMutex::Locker outputMutexLocker(outputDeviceMutex);
+        updateOutputDeviceStartedState();
+    }
 }
 
 dispatch_queue_t ProxyAudioDevice::AudioOutputDispatchQueue() {

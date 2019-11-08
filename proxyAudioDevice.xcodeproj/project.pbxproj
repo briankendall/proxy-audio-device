@@ -29,6 +29,8 @@
 		77CAB57E22153CA40092B2B0 /* AudioDevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 776E4F522208101300AE0417 /* AudioDevice.cpp */; };
 		77CAB57F221540580092B2B0 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2D7477EC157823CF00412279 /* CoreAudio.framework */; };
 		77CAB5812215405C0092B2B0 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 77CAB5802215405C0092B2B0 /* Cocoa.framework */; };
+		77CE24F02375EF7B004556AD /* utilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 77CE24EE2375EF7B004556AD /* utilities.cpp */; };
+		77CE24F12375F011004556AD /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DD7AA9915EC572000C67AE1 /* IOKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -83,6 +85,8 @@
 		77CAB57A22153A2D0092B2B0 /* WindowDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WindowDelegate.h; sourceTree = "<group>"; };
 		77CAB57B22153A2D0092B2B0 /* WindowDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = WindowDelegate.mm; sourceTree = "<group>"; };
 		77CAB5802215405C0092B2B0 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		77CE24EE2375EF7B004556AD /* utilities.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = utilities.cpp; sourceTree = "<group>"; };
+		77CE24EF2375EF7B004556AD /* utilities.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = utilities.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +94,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				77CE24F12375F011004556AD /* IOKit.framework in Frameworks */,
 				77CAB5632212252F0092B2B0 /* AppKit.framework in Frameworks */,
 				776E4F5E2208138E00AE0417 /* Carbon.framework in Frameworks */,
 				776E4F5D2208138B00AE0417 /* CoreAudio.framework in Frameworks */,
@@ -120,6 +125,8 @@
 				7799CEA4220EAB6600A3DB04 /* debugHelpers.h */,
 				2D616EF215B8C82500D598BD /* ProxyAudioDevice.cpp */,
 				77C548122211F5240041623A /* ProxyAudioDevice.h */,
+				77CE24EE2375EF7B004556AD /* utilities.cpp */,
+				77CE24EF2375EF7B004556AD /* utilities.h */,
 				7799CEA8220EB20900A3DB04 /* PublicUtility */,
 			);
 			path = proxyAudioDevice;
@@ -318,6 +325,7 @@
 			files = (
 				776BB92D2208DF8500A1120F /* AudioRingBuffer.cpp in Sources */,
 				7799CEB2220EB25A00A3DB04 /* CAHostTimeBase.cpp in Sources */,
+				77CE24F02375EF7B004556AD /* utilities.cpp in Sources */,
 				776E4F5B2208137F00AE0417 /* AudioDevice.cpp in Sources */,
 				2D616EF415B8C82500D598BD /* ProxyAudioDevice.cpp in Sources */,
 				7799CEB1220EB25A00A3DB04 /* CADebugMacros.cpp in Sources */,

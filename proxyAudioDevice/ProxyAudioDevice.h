@@ -33,7 +33,7 @@ class ProxyAudioDevice {
   public:
     enum class ConfigType { none, outputDevice, outputDeviceBufferFrameSize, deviceName };
 
-    ProxyAudioDevice(){};
+    ProxyAudioDevice() : inputIOIsActive(false) {};
     AudioDevice findTargetOutputAudioDevice();
     static int outputDeviceAliveListenerStatic(AudioObjectID inObjectID,
                                                UInt32 inNumberAddresses,
@@ -49,7 +49,7 @@ class ProxyAudioDevice {
     int outputDeviceSampleRateListener(AudioObjectID inObjectID,
                                        UInt32 inNumberAddresses,
                                        const AudioObjectPropertyAddress *inAddresses);
-    void updateOutputDevicePlayState();
+    void updateOutputDeviceStartedState();
     void matchOutputDeviceSampleRateNoLock();
     void matchOutputDeviceSampleRate();
     static int devicesListenerProcStatic(AudioObjectID inObjectID,
@@ -463,6 +463,7 @@ class ProxyAudioDevice {
                                     const void *inData,
                                     UInt32 *outNumberPropertiesChanged,
                                     AudioObjectPropertyAddress outChangedAddresses[2]);
+    void monitorUserActivity();
     dispatch_queue_t AudioOutputDispatchQueue();
     void ExecuteInAudioOutputThread(void (^block)());
     
@@ -471,10 +472,12 @@ class ProxyAudioDevice {
     CAMutex outputDeviceMutex = CAMutex("ProxyAudioOutputDeviceMutex");
     CAMutex getZeroTimestampMutex = CAMutex("ProxyAudioGetZeroTimestampMutex");
     dispatch_queue_t audioOutputQueue = NULL;
+    dispatch_source_t inputMonitoringTimer = NULL;
     AudioRingBuffer *inputBuffer = NULL;
     Byte *workBuffer = NULL;
     AudioDevice outputDevice;
     bool outputDeviceReady = false;
+    std::atomic_bool inputIOIsActive;
     Float64 lastInputFrameTime = -1;
     Float64 lastInputBufferFrameSize = -1;
     Float64 inputOutputSampleDelta = -1;
