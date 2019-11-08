@@ -28,10 +28,12 @@ enum {
 #define kDevice_ModelUID "ProxyAudioDevice_ModelUID"
 #define kOutputDeviceDefaultBufferFrameSize 512
 #define kOutputDeviceMinBufferFrameSize 4
+#define kOutputDeviceDefaultActiveCondition ActiveCondition::userActive
 
 class ProxyAudioDevice {
   public:
-    enum class ConfigType { none, outputDevice, outputDeviceBufferFrameSize, deviceName };
+    enum class ConfigType { none, outputDevice, outputDeviceBufferFrameSize, deviceName, deviceActiveCondition };
+    enum class ActiveCondition { proxiedDeviceActive = 0, userActive = 1, always = 2 };
 
     ProxyAudioDevice() : inputIOIsActive(false) {};
     AudioDevice findTargetOutputAudioDevice();
@@ -94,6 +96,8 @@ class ProxyAudioDevice {
     void setOutputDevice(CFStringRef deviceUID);
     UInt32 retrieveOutputDeviceBufferFrameSizeFromStorage();
     void setOutputDeviceBufferFrameSize(UInt32 size);
+    ActiveCondition retrieveOutputDeviceActiveConditionFromStorage();
+    void setOutputDeviceActiveCondition(ActiveCondition newActiveCondition);
 
     static ProxyAudioDevice *deviceForDriver(void *inDriver);
 
@@ -492,6 +496,7 @@ class ProxyAudioDevice {
     SInt64 smallestFramesToBufferEnd = -1;
     Float64 outputAccumulatedRateRatio = 0.0;
     UInt64 outputAccumulatedRateRatioSamples = 0;
+    ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     
     UInt32 gPlugIn_RefCount = 0;
     AudioServerPlugInHostRef gPlugIn_Host = NULL;

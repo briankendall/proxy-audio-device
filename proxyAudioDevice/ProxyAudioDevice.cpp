@@ -569,6 +569,7 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
     deviceName = copyDeviceNameFromStorage();
     outputDeviceUID = copyOutputDeviceUIDFromStorage();
     outputDeviceBufferFrameSize = retrieveOutputDeviceBufferFrameSizeFromStorage();
+    outputDeviceActiveCondition = retrieveOutputDeviceActiveConditionFromStorage();
 
     //    calculate the host ticks per frame
     struct mach_timebase_info theTimeBaseInfo;
@@ -4775,22 +4776,37 @@ int ProxyAudioDevice::devicesListenerProc(AudioObjectID inObjectID,
 }
 
 void ProxyAudioDevice::updateOutputDeviceStartedState() {
-    static bool userIsIdlePrevious = false;
+    static bool userIsActivePrevious = false;
     
     if (!outputDevice.isValid()) {
         return;
     }
-    
-    bool userIsIdle = (getUserIdleTimeInterval() > 5);
-    bool shouldStart = (outputDeviceReady &&
-                        (inputIOIsActive || !userIsIdle));
-    
-    if (userIsIdle && !userIsIdlePrevious) {
-        DebugMsg("ProxyAudio: detected user is now idle");
-    } else if (!userIsIdle && userIsIdlePrevious) {
-        DebugMsg("ProxyAudio: detected user is now active");
+
+    bool shouldStart = false;
+
+    if (!outputDeviceReady) {
+        shouldStart = false;
+
+    } else if (outputDeviceActiveCondition == ActiveCondition::userActive) {
+        // We consider the user to be active if they have done anything in the last 30 seconds:
+        bool userIsActive = (getUserIdleTimeInterval() < 30);
+        shouldStart = (inputIOIsActive || userIsActive);
+
+        if (userIsActive && !userIsActivePrevious) {
+            DebugMsg("ProxyAudio: detected user is now active");
+        } else if (!userIsActive && userIsActivePrevious) {
+            DebugMsg("ProxyAudio: detected user is now idle");
+        }
+
+        userIsActivePrevious = userIsActive;
+
+    } else if (outputDeviceActiveCondition == ActiveCondition::proxiedDeviceActive) {
+        shouldStart = inputIOIsActive;
+
+    } else {
+        shouldStart = true;
     }
-    
+
     if (!outputDevice.isStarted && shouldStart) {
         DebugMsg("ProxyAudio: starting outputDevice");
         outputDevice.start();
@@ -4799,8 +4815,7 @@ void ProxyAudioDevice::updateOutputDeviceStartedState() {
         outputDevice.stop();
         resetInputData();
     }
-    
-    userIsIdlePrevious = userIsIdle;
+
 }
 
 void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
@@ -5487,6 +5502,8 @@ void ProxyAudioDevice::parseConfigurationString(CFStringRef configString, Config
         action = ConfigType::outputDeviceBufferFrameSize;
     } else if (CFStringCompare(actionString, CFSTR("deviceName"), 0) == kCFCompareEqualTo) {
         action = ConfigType::deviceName;
+    } else if (CFStringCompare(actionString, CFSTR("outputDeviceActiveCondition"), 0) == kCFCompareEqualTo) {
+        action = ConfigType::deviceActiveCondition;
     } else {
         return;
     }
@@ -5517,6 +5534,10 @@ void ProxyAudioDevice::setConfigurationValue(ConfigType type, CFStringRef value)
         case ConfigType::deviceName:
             setDeviceName(value);
             break;
+
+        case ConfigType::deviceActiveCondition:
+            setOutputDeviceActiveCondition((ActiveCondition)CFStringGetIntValue(value));
+            break;
         
         default:
             break;
@@ -5532,9 +5553,12 @@ CFStringRef ProxyAudioDevice::copyConfigurationValue(ConfigType type) {
             
         case ConfigType::outputDeviceBufferFrameSize:
             return CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), outputDeviceBufferFrameSize);
-            
+                
         case ConfigType::deviceName:
             return CFStringCreateCopy(NULL, deviceName);
+
+        case ConfigType::deviceActiveCondition:
+            return CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), outputDeviceActiveCondition);
             
         default:
             return nullptr;
@@ -5720,6 +5744,41 @@ void ProxyAudioDevice::setOutputDeviceBufferFrameSize(UInt32 newSize) {
         setupTargetOutputDevice();
     });
 }
+
+ProxyAudioDevice::ActiveCondition ProxyAudioDevice::retrieveOutputDeviceActiveConditionFromStorage() {
+    DebugMsg("ProxyAudio: retrieveOutputDeviceActiveConditionFromStorage");
+
+    if (!gPlugIn_Host) {
+        DebugMsg("ProxyAudio: retrieveOutputDeviceActiveConditionFromStorage no plugin host");
+        return kOutputDeviceDefaultActiveCondition;
+    }
+
+    CFPropertyListSmartRef data;
+    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("outputDeviceActiveCondition"), &data);
+
+    if (data == NULL || CFGetTypeID(data) != CFNumberGetTypeID()) {
+        DebugMsg("ProxyAudio: retrieveOutputDeviceActiveConditionFromStorage finished returning default active condition");
+        return kOutputDeviceDefaultActiveCondition;
+    }
+
+    SInt32 value;
+    CFNumberGetValue(CFNumberRef(CFPropertyListRef(data)), kCFNumberSInt32Type, &value);
+
+    DebugMsg("ProxyAudio: retrieveOutputDeviceActiveConditionFromStorage finished returning stored active condition");
+
+    return ActiveCondition(value);
+}
+
+void ProxyAudioDevice::setOutputDeviceActiveCondition(ActiveCondition newActiveCondition) {
+    {
+        CAMutex::Locker locker(&stateMutex);
+        outputDeviceActiveCondition = newActiveCondition;
+        CFNumberSmartRef newActiveConditionRef = CFNumberCreate(NULL, kCFNumberSInt32Type, &newActiveCondition);
+        gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("outputDeviceActiveCondition"), newActiveConditionRef);
+    }
+}
+
+#pragma mark Other stuff!
 
 void ProxyAudioDevice::monitorUserActivity() {
     {

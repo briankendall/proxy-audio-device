@@ -19,6 +19,9 @@ int onDevicesChanged(AudioObjectID inObjectID,
     self.deviceNameTextField.enabled = NO;
     self.outputDeviceComboBox.enabled = NO;
     self.bufferSizeComboBox.enabled = NO;
+    self.proxiedDeviceIsActiveRadioButton.enabled = NO;
+    self.userIsActiveRadioButton.enabled = NO;
+    self.alwaysRadioButton.enabled = NO;
     initializationAttemptInterval = 3;
     [self keepTryingToInitializeUntilSuccess];
 }
@@ -63,7 +66,26 @@ int onDevicesChanged(AudioObjectID inObjectID,
     self.deviceNameTextField.enabled = YES;
     self.outputDeviceComboBox.enabled = YES;
     self.bufferSizeComboBox.enabled = YES;
-    
+    self.proxiedDeviceIsActiveRadioButton.enabled = YES;
+    self.userIsActiveRadioButton.enabled = YES;
+    self.alwaysRadioButton.enabled = YES;
+
+    ProxyAudioDevice::ActiveCondition condition = [self currentOutputDeviceActiveCondition];
+
+    if (condition == ProxyAudioDevice::ActiveCondition::proxiedDeviceActive) {
+        self.proxiedDeviceIsActiveRadioButton.state = NSControlStateValueOn;
+        self.userIsActiveRadioButton.state = NSControlStateValueOff;
+        self.alwaysRadioButton.state = NSControlStateValueOff;
+    } else if (condition == ProxyAudioDevice::ActiveCondition::userActive) {
+        self.proxiedDeviceIsActiveRadioButton.state = NSControlStateValueOff;
+        self.userIsActiveRadioButton.state = NSControlStateValueOn;
+        self.alwaysRadioButton.state = NSControlStateValueOff;
+    } else {
+        self.proxiedDeviceIsActiveRadioButton.state = NSControlStateValueOff;
+        self.userIsActiveRadioButton.state = NSControlStateValueOff;
+        self.alwaysRadioButton.state = NSControlStateValueOn;
+    }
+
     return true;
 }
 
@@ -220,6 +242,43 @@ int onDevicesChanged(AudioObjectID inObjectID,
         proxyAudioBox,
         (__bridge_retained CFStringRef)
             [NSString stringWithFormat:@"outputDeviceBufferFrameSize=%@", newBufferFrameSizeString]);
+}
+
+- (ProxyAudioDevice::ActiveCondition)currentOutputDeviceActiveCondition {
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setIdentifyValue(proxyAudioBox, -((SInt32)ProxyAudioDevice::ConfigType::deviceActiveCondition));
+    NSString *result = (__bridge_transfer NSString *)AudioDevice::copyObjectName(proxyAudioBox);
+
+    return (ProxyAudioDevice::ActiveCondition)[result intValue];
+}
+
+- (void)setCurrentOutputDeviceActiveCondition:(ProxyAudioDevice::ActiveCondition)condition {
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setObjectName(
+        proxyAudioBox,
+        (__bridge_retained CFStringRef)
+            [NSString stringWithFormat:@"outputDeviceActiveCondition=%d", condition]);
+}
+
+- (IBAction)proxiedDeviceIsActiveConditionSelected:(id)sender {
+    #pragma unused(sender)
+    self.alwaysRadioButton.state = NSControlStateValueOff;
+    self.userIsActiveRadioButton.state = NSControlStateValueOff;
+    [self setCurrentOutputDeviceActiveCondition:ProxyAudioDevice::ActiveCondition::proxiedDeviceActive];
+}
+
+- (IBAction)userIsActiveConditionSelected:(id)sender {
+    #pragma unused(sender)
+    self.alwaysRadioButton.state = NSControlStateValueOff;
+    self.proxiedDeviceIsActiveRadioButton.state = NSControlStateValueOff;
+    [self setCurrentOutputDeviceActiveCondition:ProxyAudioDevice::ActiveCondition::userActive];
+}
+
+- (IBAction)alwaysConditionSelected:(id)sender {
+    #pragma unused(sender)
+    self.proxiedDeviceIsActiveRadioButton.state = NSControlStateValueOff;
+    self.userIsActiveRadioButton.state = NSControlStateValueOff;
+    [self setCurrentOutputDeviceActiveCondition:ProxyAudioDevice::ActiveCondition::always];
 }
 
 @end
