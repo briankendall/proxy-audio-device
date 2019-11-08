@@ -4768,6 +4768,26 @@ int ProxyAudioDevice::devicesListenerProc(AudioObjectID inObjectID,
     return noErr;
 }
 
+void ProxyAudioDevice::updateOutputDevicePlayState() {
+    if (!outputDevice.isValid()) {
+        return;
+    }
+    
+    bool inputIOIsRunning;
+    {
+        CAMutex::Locker locker(stateMutex);
+        inputIOIsRunning = (gDevice_IOIsRunning > 0);
+    }
+    
+    if (outputDeviceReady && inputIOIsRunning > 0) {
+        DebugMsg("ProxyAudio: starting outputDevice");
+        outputDevice.start();
+    } else {
+        DebugMsg("ProxyAudio: stopping outputDevice");
+        outputDevice.stop();
+    }
+}
+
 void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     DebugMsg("ProxyAudio: matchOutputDeviceSampleRateNoLock");
     
@@ -4793,7 +4813,8 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     }
     
     if (currentInputSampleRate == outputDevice.sampleRate) {
-        outputDevice.start();
+        outputDeviceReady = true;
+        updateOutputDevicePlayState();
         return;
     }
 
@@ -4802,7 +4823,9 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     // we're not using a locking mechanism on its attributes between this function and its IO
     // function.
     
-    outputDevice.stop();
+    outputDeviceReady = false;
+    updateOutputDevicePlayState();
+    
     resetInputData();
     outputDevice.updateStreamInfo();
 
@@ -4889,6 +4912,7 @@ void ProxyAudioDevice::deinitializeOutputDeviceNoLock() {
     if (outputDevice.isValid()) {
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock stopping device");
         outputDevice.stop();
+        outputDeviceReady = false;
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock removing IO proc");
         outputDevice.destroyIOProc();
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock invalidating");
@@ -4984,6 +5008,8 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
         ++gDevice_IOIsRunning;
     }
     
+    ExecuteInAudioOutputThread(^ () { updateOutputDevicePlayState(); });
+    
     DebugMsg("ProxyAudio: StartIO finished");
     
     return theAnswer;
@@ -5026,6 +5052,9 @@ OSStatus ProxyAudioDevice::StopIO(AudioServerPlugInDriverRef inDriver,
             --gDevice_IOIsRunning;
         }
     }
+    
+    ExecuteInAudioOutputThread(^ () { updateOutputDevicePlayState(); });
+    
     DebugMsg("ProxyAudio: StopIO finished");
 
 Done:
@@ -5332,7 +5361,7 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     if (smallestFramesToBufferEnd == -1
         || (framesToBufferEnd < smallestFramesToBufferEnd && smallestFramesToBufferEnd >= 0)) {
         smallestFramesToBufferEnd = framesToBufferEnd;
-        DebugMsg("ProxyAudio: frames to buffer end shrunk, is now: %lld", smallestFramesToBufferEnd);
+        //DebugMsg("ProxyAudio: frames to buffer end shrunk, is now: %lld", smallestFramesToBufferEnd);
     }
 #endif
 

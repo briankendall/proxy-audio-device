@@ -49,6 +49,7 @@ class ProxyAudioDevice {
     int outputDeviceSampleRateListener(AudioObjectID inObjectID,
                                        UInt32 inNumberAddresses,
                                        const AudioObjectPropertyAddress *inAddresses);
+    void updateOutputDevicePlayState();
     void matchOutputDeviceSampleRateNoLock();
     void matchOutputDeviceSampleRate();
     static int devicesListenerProcStatic(AudioObjectID inObjectID,
@@ -473,6 +474,7 @@ class ProxyAudioDevice {
     AudioRingBuffer *inputBuffer = NULL;
     Byte *workBuffer = NULL;
     AudioDevice outputDevice;
+    bool outputDeviceReady = false;
     Float64 lastInputFrameTime = -1;
     Float64 lastInputBufferFrameSize = -1;
     Float64 inputOutputSampleDelta = -1;
