@@ -36,6 +36,7 @@ class ProxyAudioDevice {
     enum class ActiveCondition { proxiedDeviceActive = 0, userActive = 1, always = 2 };
 
     ProxyAudioDevice() : inputIOIsActive(false) {};
+    AudioDevice findOutputDeviceWithUID(CFStringRef outputDeviceUID);
     AudioDevice findTargetOutputAudioDevice();
     static int outputDeviceAliveListenerStatic(AudioObjectID inObjectID,
                                                UInt32 inNumberAddresses,
@@ -62,6 +63,7 @@ class ProxyAudioDevice {
                             UInt32 inNumberAddresses,
                             const AudioObjectPropertyAddress *inAddresses);
     void setupAudioDevicesListener();
+    void initializeAudioDevice(const AudioDevice &newOutputDevice);
     void setupTargetOutputDevice();
     void initializeOutputDevice();
     void deinitializeOutputDeviceNoLock();

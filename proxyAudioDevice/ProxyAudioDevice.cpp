@@ -4654,9 +4654,33 @@ Done:
 
 #pragma mark Output Device Operations
 
+AudioDevice ProxyAudioDevice::findOutputDeviceWithUID(CFStringRef targetOutputDeviceUID) {
+    DebugMsg("ProxyAudio: findTargetOutputAudioDevice target UID: %s", CFStringToStdString(targetOutputDeviceUID).c_str());
+    std::vector<AudioObjectID> devices = AudioDevice::allAudioDevices();
+
+    for (AudioObjectID device : devices) {
+        AudioObjectPropertyAddress propertyAddress = {
+            kAudioDevicePropertyDeviceUID, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMaster};
+
+        CFStringSmartRef uid;
+        UInt32 size = sizeof(CFStringRef);
+        OSStatus err = AudioObjectGetPropertyData(device, &propertyAddress, 0, NULL, &size, &uid);
+
+        if (err == noErr && uid) {
+            if (CFStringCompare(uid, targetOutputDeviceUID, 0) == kCFCompareEqualTo) {
+                DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, found output device");
+                return AudioDevice(device);
+            }
+        }
+    }
+
+    DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, did not find output device");
+
+    return AudioDevice();
+}
+
 AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
     DebugMsg("ProxyAudio: findTargetOutputAudioDevice");
-    std::vector<AudioObjectID> devices = AudioDevice::allAudioDevices();
     CFStringSmartRef currentOutputDeviceUID;
     
     {
@@ -4669,28 +4693,8 @@ AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
         
         currentOutputDeviceUID = CFStringCreateCopy(NULL, outputDeviceUID);
     }
-    
-    DebugMsg("ProxyAudio: findTargetOutputAudioDevice target UID: %s", CFStringToStdString(currentOutputDeviceUID).c_str());
-    
-    for (AudioObjectID device : devices) {
-        AudioObjectPropertyAddress propertyAddress = {
-            kAudioDevicePropertyDeviceUID, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMaster};
 
-        CFStringSmartRef uid;
-        UInt32 size = sizeof(CFStringRef);
-        OSStatus err = AudioObjectGetPropertyData(device, &propertyAddress, 0, NULL, &size, &uid);
-
-        if (err == noErr && uid) {
-            if (CFStringCompare(uid, currentOutputDeviceUID, 0) == kCFCompareEqualTo) {
-                DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, found output device");
-                return AudioDevice(device);
-            }
-        }
-    }
-
-    DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, not not find output device");
-    
-    return AudioDevice();
+    return findOutputDeviceWithUID(currentOutputDeviceUID);
 }
 
 int ProxyAudioDevice::outputDeviceAliveListenerStatic(AudioObjectID inObjectID,
@@ -4878,6 +4882,26 @@ void ProxyAudioDevice::matchOutputDeviceSampleRate()
     matchOutputDeviceSampleRateNoLock();
 }
 
+void ProxyAudioDevice::initializeAudioDevice(const AudioDevice &newOutputDevice) {
+    DebugMsg("ProxyAudio: setupTargetOutputDevice setting up new device");
+    resetInputData();
+    outputDevice = newOutputDevice;
+    outputDevice.setBufferFrameSize(outputDeviceBufferFrameSize);
+    outputDevice.setupIOProc(outputDeviceIOProcStatic, this);
+    outputDevice.addPropertyListener(kAudioDevicePropertyDeviceIsAlive,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMaster,
+                                     outputDeviceAliveListenerStatic,
+                                     this);
+    outputDevice.addPropertyListener(kAudioDevicePropertyNominalSampleRate,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMaster,
+                                     outputDeviceSampleRateListenerStatic,
+                                     this);
+    DebugMsg("ProxyAudio: setupTargetOutputDevice will match sample rate");
+    matchOutputDeviceSampleRateNoLock();
+}
+
 void ProxyAudioDevice::setupTargetOutputDevice() {
     DebugMsg("ProxyAudio: setupTargetOutputDevice");
     AudioDevice newOutputDevice = findTargetOutputAudioDevice();
@@ -4898,26 +4922,19 @@ void ProxyAudioDevice::setupTargetOutputDevice() {
     deinitializeOutputDeviceNoLock();
 
     if (newOutputDevice.isValid()) {
-        DebugMsg("ProxyAudio: setupTargetOutputDevice setting up new device");
-        resetInputData();
-        outputDevice = newOutputDevice;
-        outputDevice.setBufferFrameSize(outputDeviceBufferFrameSize);
-        outputDevice.setupIOProc(outputDeviceIOProcStatic, this);
-        outputDevice.addPropertyListener(kAudioDevicePropertyDeviceIsAlive,
-                                         kAudioObjectPropertyScopeGlobal,
-                                         kAudioObjectPropertyElementMaster,
-                                         outputDeviceAliveListenerStatic,
-                                         this);
-        outputDevice.addPropertyListener(kAudioDevicePropertyNominalSampleRate,
-                                         kAudioObjectPropertyScopeGlobal,
-                                         kAudioObjectPropertyElementMaster,
-                                         outputDeviceSampleRateListenerStatic,
-                                         this);
-        DebugMsg("ProxyAudio: setupTargetOutputDevice will match sample rate");
-        matchOutputDeviceSampleRateNoLock();
-    } else {
-        syslog(LOG_WARNING, "ProxyAudio: setupTargetOutputDevice could not find output device");
+        initializeAudioDevice(newOutputDevice);
+        return;
     }
+
+    newOutputDevice = findOutputDeviceWithUID(CFSTR("BuiltInSpeakerDevice"));
+
+    if (newOutputDevice.isValid()) {
+        initializeAudioDevice(newOutputDevice);
+        return;
+    }
+
+    syslog(LOG_WARNING, "ProxyAudio: setupTargetOutputDevice could not find output device, trying backup");
+
 }
 
 void ProxyAudioDevice::initializeOutputDevice() {
