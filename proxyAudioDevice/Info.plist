@@ -24,14 +24,14 @@
 	<string>1</string>
 	<key>CFPlugInFactories</key>
 	<dict>
-		<key>99A15A8B-DA3C-42C3-BD5D-D035A0C2377A</key>
+		<key>BAFEF10F-7C8C-4207-944B-43A2A1DF2070</key>
 		<string>ProxyAudio_Create</string>
 	</dict>
 	<key>CFPlugInTypes</key>
 	<dict>
 		<key>443ABAB8-E7B3-491A-B985-BEB9187030DB</key>
 		<array>
-			<string>99A15A8B-DA3C-42C3-BD5D-D035A0C2377A</string>
+			<string>BAFEF10F-7C8C-4207-944B-43A2A1DF2070</string>
 		</array>
 	</dict>
 </dict>
