@@ -4,6 +4,7 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
 
 ### Installation
 
+#### Manual installation
 1. Download the latest release from this GitHub repository
 
 2. Create the directory `HAL` if it does not exist. Open a terminal window, execute the following command and enter your administrator password when prompted.
@@ -20,6 +21,12 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
 
 5. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
 
+#### Install with macports
+1. Install proxy-audio-device
+
+        sudo port install proxy-audio-device
+
+2. Run Proxy Audio Device Settings app to configure your new audio device.
 
 ### Building
 
