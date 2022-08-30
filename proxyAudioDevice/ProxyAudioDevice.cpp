@@ -574,7 +574,7 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
     //    calculate the host ticks per frame
     struct mach_timebase_info theTimeBaseInfo;
     mach_timebase_info(&theTimeBaseInfo);
-    Float64 theHostClockFrequency = theTimeBaseInfo.denom / theTimeBaseInfo.numer;
+    Float64 theHostClockFrequency = (Float64)theTimeBaseInfo.denom / theTimeBaseInfo.numer;
     theHostClockFrequency *= 1000000000.0;
     gDevice_HostTicksPerFrame = theHostClockFrequency / gDevice_SampleRate;
 
@@ -734,7 +734,7 @@ OSStatus ProxyAudioDevice::PerformDeviceConfigurationChange(AudioServerPlugInDri
 
         //    recalculate the state that depends on the sample rate
         mach_timebase_info(&theTimeBaseInfo);
-        theHostClockFrequency = theTimeBaseInfo.denom / theTimeBaseInfo.numer;
+        theHostClockFrequency = (Float64)theTimeBaseInfo.denom / theTimeBaseInfo.numer;
         theHostClockFrequency *= 1000000000.0;
         gDevice_HostTicksPerFrame = theHostClockFrequency / gDevice_SampleRate;
     }
