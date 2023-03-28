@@ -7,15 +7,16 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
 #### Manual installation
 1. Download the latest release from this GitHub repository
 
-2. Create the directory `HAL` if it does not exist. Open a terminal window, execute the following command and enter your administrator password when prompted.
+2. Create the directory `HAL` if it does not exist. Open a terminal window, execute the following command and enter your administrator password when prompted:
 
         sudo mkdir /Library/Audio/Plug-Ins/HAL
 
-3. Move the directory `ProxyAudioDriver.driver` to `/Library/Audio/Plug-Ins/HAL`. Execute in the root directory of the unzipped file.
+3. Move the directory `ProxyAudioDriver.driver` to `/Library/Audio/Plug-Ins/HAL` and assign it the correct owner. Execute in the root directory of the unzipped file:
 
         sudo mv ./ProxyAudioDevice.driver /Library/Audio/Plug-Ins/HAL/
+        sudo chown -R root:wheel /Library/Audio/Plug-Ins/HAL/ProxyAudioDevice.driver
 
-4. Either reboot your system or reboot Core Audio by executing the following command.
+4. Either reboot your system or reboot Core Audio by executing the following command:
 
         sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
 
