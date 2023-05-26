@@ -5380,37 +5380,52 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         return noErr;
     }
 
-    bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
+    // For some reason over the period of several minutes or hours we will gradually
+    // creep towards the end of the buffer, because the input and output devices are
+    // ever so slightly out of sync, or something. I really don't understand why this
+    // happens. But a workaround (might) be to just adjust when we start reading from
+    // the input ring buffer every time we see ourselves creeping a little closer to
+    // the end of it.
+    SInt64 framesToBufferEnd = inputBuffer->mEndFrame - SInt64(startFrame);
 
-#if DEBUG
-    // This is just some debugging info to tell when we might be gradually
-    // approaching the end of the input buffer and headed for a buffer
-    // overrun
-    SInt64 framesToBufferEnd =
-        inputBuffer->mEndFrame - (SInt64(startFrame) + SInt64(currentOutputDeviceBufferFrameSize));
-
-    if (smallestFramesToBufferEnd == -1
-        || (framesToBufferEnd < smallestFramesToBufferEnd && smallestFramesToBufferEnd >= 0)) {
+    if (smallestFramesToBufferEnd == -1) {
         smallestFramesToBufferEnd = framesToBufferEnd;
-        //DebugMsg("ProxyAudio: frames to buffer end shrunk, is now: %lld", smallestFramesToBufferEnd);
-    }
-#endif
-
-    if (overrun && inputFinalFrameTime == -1 && startFrame >= inputBuffer->mStartFrame) {
-        // Since this warning could conceivably happen every cycle, explicitly make it
-        // only appear once every five seconds at most
-        static time_t lastBufferOverrunWarning = 0;
-        time_t seconds;
-        time(&seconds);
+        DebugMsg("ProxyAudio: ** frames to buffer end initial: %lld", smallestFramesToBufferEnd);
+    } else if (framesToBufferEnd < smallestFramesToBufferEnd && smallestFramesToBufferEnd >= 0) {
+        //smallestFramesToBufferEnd = framesToBufferEnd;
+        DebugMsg("ProxyAudio: ** frames to buffer end shrunk, was: %lld   is now: %lld", smallestFramesToBufferEnd, framesToBufferEnd);
         
-        if ((seconds - lastBufferOverrunWarning) > 5) {
-            lastBufferOverrunWarning = seconds;
-            syslog(LOG_WARNING, "ProxyAudio: output unexpected overrun");
-            syslog(LOG_WARNING, "ProxyAudio: output frame: %lf", startFrame);
-            syslog(LOG_WARNING,
-                   "ProxyAudio: output buffer start: %llu    end: %llu",
-                   inputBuffer->mStartFrame,
-                   inputBuffer->mEndFrame);
+        inputOutputSampleDelta -= (smallestFramesToBufferEnd - framesToBufferEnd);
+        DebugMsg("ProxyAudio: ** adjusted inputOutputSampleDelta, is now: %lf", inputOutputSampleDelta);
+        startFrame = inOutputTime->mSampleTime + inputOutputSampleDelta;
+        
+        SInt64 framesToBufferEndAdjusted = inputBuffer->mEndFrame - SInt64(startFrame);
+        //DebugMsg("ProxyAudio: ** framesToBufferEndAdjusted: %lld", framesToBufferEnd2);
+        smallestFramesToBufferEnd = framesToBufferEndAdjusted;
+    }
+    
+    //DebugMsg("ProxyAudio: input: %lld   d1: %lld   d2: %lld   startFrame: %lld   alt: %lld   diff: %lld", SInt64(lastInputFrameTime), SInt64(inputOutputSampleDelta), SInt64(inputOutputSampleDelta2), SInt64(startFrame), altStartFrame, SInt64(startFrame) - altStartFrame);
+    
+    bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, startFrame);
+
+    if (overrun) {
+        //DebugMsg("ProxyAudio: overrun!");
+        if (inputFinalFrameTime == -1 && startFrame >= inputBuffer->mStartFrame) {
+            // Since this warning could conceivably happen every cycle, explicitly make it
+            // only appear once every five seconds at most
+            static time_t lastBufferOverrunWarning = 0;
+            time_t seconds;
+            time(&seconds);
+            
+            if ((seconds - lastBufferOverrunWarning) > 5) {
+                lastBufferOverrunWarning = seconds;
+                syslog(LOG_WARNING, "ProxyAudio: output unexpected overrun");
+                syslog(LOG_WARNING, "ProxyAudio: output frame: %lf", startFrame);
+                syslog(LOG_WARNING,
+                       "ProxyAudio: output buffer start: %llu    end: %llu",
+                       inputBuffer->mStartFrame,
+                       inputBuffer->mEndFrame);
+            }
         }
     }
     
