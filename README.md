@@ -4,6 +4,20 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
 
 ### Installation
 
+#### Install with a package manager
+
+[![homebrew cask](https://img.shields.io/homebrew/cask/v/proxy-audio-device)](https://formulae.brew.sh/cask/proxy-audio-device)
+[![macports](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fports.macports.org%2Fapi%2Fv1%2Fports%2Fproxy-audio-device%2F&query=%24.version&label=macports)](https://ports.macports.org/port/proxy-audio-device/)
+
+Install [proxy-audio-device with Homebrew with `brew`](https://formulae.brew.sh/cask/proxy-audio-device)
+_or_ [proxy-audio-device on macports with `port`](https://ports.macports.org/port/proxy-audio-device/):
+
+    brew install --cask proxy-audio-device
+    sudo port install proxy-audio-device
+
+2. Run Proxy Audio Device Settings app to configure your new audio device.
+
+
 #### Manual installation
 1. Download the latest release from this GitHub repository
 
@@ -21,13 +35,6 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
         sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
 
 5. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
-
-#### Install with macports
-1. Install proxy-audio-device
-
-        sudo port install proxy-audio-device
-
-2. Run Proxy Audio Device Settings app to configure your new audio device.
 
 ### Building
 
