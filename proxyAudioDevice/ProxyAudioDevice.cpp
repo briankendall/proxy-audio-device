@@ -5631,7 +5631,9 @@ CFStringRef ProxyAudioDevice::copyDefaultProxyOutputDeviceUID() {
     AudioObjectID defaultDevice = AudioDevice::defaultOutputDevice();
     
     if (defaultDevice != kAudioObjectUnknown) {
-        CFStringSmartRef uid = AudioDevice::copyDeviceUID(defaultDevice);
+        // Using CFStringSmartRef here will break macOS sonoma.
+        // CFStringSmartRef uid = AudioDevice::copyDeviceUID(defaultDevice);
+        CFStringRef uid = AudioDevice::copyDeviceUID(defaultDevice);
         
         if (uid && CFStringCompare(uid, CFSTR(kDevice_UID), 0) != kCFCompareEqualTo) {
             DebugMsg("ProxyAudio: copyDefaultProxyOutputDeviceUID returning default output device");
