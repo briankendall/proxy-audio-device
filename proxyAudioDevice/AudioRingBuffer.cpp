@@ -68,7 +68,7 @@ bool AudioRingBuffer::Store(const Byte *data, UInt32 nFrames, SInt64 startFrame)
             // have to advance the start
             SInt64 newStart = mEndFrame - mCapacityFrames;
             if (newStart > mStartFrame) {
-                mStartOffset = (mStartOffset + (newStart - mStartFrame) * mBytesPerFrame) % mCapacityBytes;
+                mStartOffset = (UInt32)(mStartOffset + ((UInt64)newStart - mStartFrame) * mBytesPerFrame) % mCapacityBytes;
                 mStartFrame = newStart;
             }
         }
