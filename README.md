@@ -1,6 +1,6 @@
 ## Proxy Audio Driver
 
-A HAL virtual audio driver for macOS that sends all output to another audio device. It's main purpose is to make it possible to use macOS's system volume controls such as the volume menu bar icon or volume keyboard keys to change the volume of external audio interfaces that don't allow it. It might be useful for something else too.
+A HAL virtual audio driver for macOS that sends all output to another audio device. Its main purpose is to make it possible to use macOS's system volume controls, such as the volume menu bar icon or volume keyboard keys, to change the volume of external audio interfaces that don't allow it. It might be useful for something else, too.
 
 ### Installation
 
@@ -8,16 +8,18 @@ A HAL virtual audio driver for macOS that sends all output to another audio devi
 
 [![Packaging status on repology](https://repology.org/badge/vertical-allrepos/proxy-audio-device.svg)](https://repology.org/project/proxy-audio-device/versions)
 
-Install [proxy-audio-device with Homebrew with `brew`](https://formulae.brew.sh/cask/proxy-audio-device)
-_or_ [proxy-audio-device on macports with `port`](https://ports.macports.org/port/proxy-audio-device/):
+Install [proxy-audio-device with Homebrew with `brew`](https://formulae.brew.sh/cask/proxy-audio-device):
 
     brew install --cask proxy-audio-device
+
+_or_ [proxy-audio-device on macports with `port`](https://ports.macports.org/port/proxy-audio-device/):
+
     sudo port install proxy-audio-device
 
-2. Run Proxy Audio Device Settings app to configure your new audio device.
-
+Run the _Proxy Audio Device Settings_ app to configure your new audio device.
 
 #### Manual installation
+
 1. Download the latest release from this GitHub repository
 
 2. Create the directory `HAL` if it does not exist. Open a terminal window, execute the following command and enter your administrator password when prompted:
