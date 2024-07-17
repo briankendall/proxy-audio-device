@@ -37,6 +37,16 @@ Run the _Proxy Audio Device Settings_ app to configure your new audio device.
 
 5. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
 
+### Uninstallation
+
+1. Open a terminal window and execute the following command:
+
+        sudo rm -rf /Library/Audio/Plug-Ins/HAL/ProxyAudioDevice.driver
+
+2. Either reboot your system or reboot Core Audio by executing the following command:
+        
+        sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+
 ### Building
 
 Clone the repo, open the Xcode project and build the driver and the settings application. Then follow the above installation instructions to install it.
