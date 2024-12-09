@@ -33,9 +33,13 @@ Run the _Proxy Audio Device Settings_ app to configure your new audio device.
 
 4. Either reboot your system or reboot Core Audio by executing the following command:
 
+        # macOS <= 13
         sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+   
+        # macOS >= 14.4
+        sudo killall coreaudiod
 
-5. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
+6. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
 
 ### Uninstallation
 
@@ -44,8 +48,12 @@ Run the _Proxy Audio Device Settings_ app to configure your new audio device.
         sudo rm -rf /Library/Audio/Plug-Ins/HAL/ProxyAudioDevice.driver
 
 2. Either reboot your system or reboot Core Audio by executing the following command:
-        
+
+        # macOS <= 13
         sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+   
+        # macOS >= 14.4
+        sudo killall coreaudiod
 
 ### Building
 
