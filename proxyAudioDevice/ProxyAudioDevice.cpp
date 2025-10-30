@@ -3036,12 +3036,13 @@ OSStatus ProxyAudioDevice::GetDevicePropertyData(AudioServerPlugInDriverRef inDr
 
         case kAudioDevicePropertyIsHidden:
             //    This returns whether or not the device is visible to clients.
+            //    Hide the proxy device when the target output device is unavailable.
             FailWithAction(inDataSize < sizeof(UInt32),
                            theAnswer = kAudioHardwareBadPropertySizeError,
                            Done,
                            "GetDevicePropertyData: not enough space for the return value of "
                            "kAudioDevicePropertyIsHidden for the device");
-            *((UInt32 *)outData) = 0;
+            *((UInt32 *)outData) = outputDeviceReady ? 0 : 1;
             *outDataSize = sizeof(UInt32);
             break;
 
@@ -4845,6 +4846,15 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     if (currentInputSampleRate == outputDevice.sampleRate) {
         outputDeviceReady = true;
         updateOutputDeviceStartedState();
+        
+        // Notify that the device is now visible since target device is available
+        ExecuteInAudioOutputThread(^() {
+            AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyIsHidden,
+                                                     kAudioObjectPropertyScopeGlobal,
+                                                     kAudioObjectPropertyElementMaster};
+            gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Device, 1, &theAddress);
+        });
+
         return;
     }
 
@@ -4855,7 +4865,15 @@ void ProxyAudioDevice::matchOutputDeviceSampleRateNoLock() {
     
     outputDeviceReady = false;
     updateOutputDeviceStartedState();
-    
+
+    // Notify that device is now hidden during sample rate transition
+    ExecuteInAudioOutputThread(^() {
+        AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyIsHidden,
+                                                 kAudioObjectPropertyScopeGlobal,
+                                                 kAudioObjectPropertyElementMaster};
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Device, 1, &theAddress);
+    });
+
     resetInputData();
     outputDevice.updateStreamInfo();
 
@@ -4943,6 +4961,15 @@ void ProxyAudioDevice::deinitializeOutputDeviceNoLock() {
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock stopping device");
         outputDevice.stop();
         outputDeviceReady = false;
+        
+        // Notify that the device is now hidden since target device is unavailable
+        ExecuteInAudioOutputThread(^() {
+            AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyIsHidden,
+                                                     kAudioObjectPropertyScopeGlobal,
+                                                     kAudioObjectPropertyElementMaster};
+            gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Device, 1, &theAddress);
+        });
+        
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock removing IO proc");
         outputDevice.destroyIOProc();
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock invalidating");
