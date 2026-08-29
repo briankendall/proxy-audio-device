@@ -36,8 +36,12 @@ enum {
 // Proxy clock servo (see GetZeroTimeStamp / updateProxyClockCorrectionNoLock). The proxy device's
 // clock is synthetic, so rather than letting it free-run at a rate estimated from the target
 // device's rate scalar alone, its rate is steered so that the ring buffer fill level measured in
-// the target device's IO proc stays at the level it had when the read position was anchored.
-// Gains are per frame of fill error, applied once per zero time stamp period.
+// the target device's IO proc stays at the level it had when the read position was anchored. The
+// error signal is the phase between the two clocks in frames, measured by projecting the proxy's
+// time line onto the host time of each target device IO cycle (a continuous quantity), rather than
+// the ring buffer's write pointer, which only advances once per input cycle and so carries a
+// phase-dependent offset of up to one input buffer.
+// Gains are per frame of phase error, applied once per zero time stamp period.
 #define kProxyClockGainP (1.0 / (64.0 * 16384.0))
 #define kProxyClockGainI (kProxyClockGainP / 128.0)
 #define kProxyClockMaxCorrection 500e-6
@@ -107,6 +111,7 @@ class ProxyAudioDevice {
                                          UInt32 outputBufferFrameSize,
                                          UInt32 safetyOffset);
     void updateProxyClockCorrectionNoLock();
+    Float64 proxySampleTimeForHostTimeNoLock(UInt64 hostTime);
     void calculateVolumeFactors(Float32 volumeL,
                                 Float32 volumeR,
                                 bool mute,
@@ -532,10 +537,11 @@ class ProxyAudioDevice {
     UInt64 outputAccumulatedRateRatioSamples = 0;
     Float64 outputRateRatio = 1.0;
     Float64 proxyClockCorrection = 1.0;
-    SInt64 targetFillFrames = 0;
-    Float64 fillErrorAccumulated = 0.0;
-    UInt64 fillErrorSamples = 0;
-    Float64 fillErrorIntegral = 0.0;
+    Float64 proxyHostTicksPerFrame = 0.0;
+    Float64 phaseFramesAtAnchor = 0.0;
+    Float64 phaseErrorAccumulated = 0.0;
+    UInt64 phaseErrorSamples = 0;
+    Float64 phaseErrorIntegral = 0.0;
     UInt64 proxyClockPeriodsSinceLog = 0;
     ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     bool outputDeviceHideWhenUnavailable = kOutputDeviceDefaultHideWhenUnavailable;

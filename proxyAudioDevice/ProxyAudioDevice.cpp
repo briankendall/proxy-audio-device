@@ -5013,9 +5013,9 @@ void ProxyAudioDevice::resetInputData() {
 
     {
         CAMutex::Locker servoLocker(&getZeroTimestampMutex);
-        fillErrorAccumulated = 0.0;
-        fillErrorSamples = 0;
-        fillErrorIntegral = 0.0;
+        phaseErrorAccumulated = 0.0;
+        phaseErrorSamples = 0;
+        phaseErrorIntegral = 0.0;
     }
 }
 
@@ -5066,6 +5066,7 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
             CAMutex::Locker servoLocker(&getZeroTimestampMutex);
             outputAccumulatedRateRatio = 0.0;
             outputAccumulatedRateRatioSamples = 0;
+            proxyHostTicksPerFrame = gDevice_HostTicksPerFrame * outputRateRatio * proxyClockCorrection;
         }
         resetInputData();
     }
@@ -5179,6 +5180,7 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
         // period in updateProxyClockCorrectionNoLock().
         theHostTicksPerRingBuffer =
             gDevice_HostTicksPerFrame * ((Float64)kDevice_RingBufferSize) * outputRateRatio * proxyClockCorrection;
+        proxyHostTicksPerFrame = theHostTicksPerRingBuffer / ((Float64)kDevice_RingBufferSize);
 
         //    advance by however many whole periods have elapsed since the last zero time stamp
         if (theHostTicksPerRingBuffer > 0.0) {
@@ -5472,12 +5474,16 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
             fill = inputBuffer->mEndFrame - (SInt64)startFrame;
         }
 
-        // Feed the fill level error to the proxy clock servo (consumed in GetZeroTimeStamp).
-        CAMutex::Locker locker(&getZeroTimestampMutex);
+        // Feed the phase error between the proxy clock and the target device's clock to the proxy
+        // clock servo (consumed in GetZeroTimeStamp).
+        if (inOutputTime->mFlags & kAudioTimeStampHostTimeValid) {
+            CAMutex::Locker locker(&getZeroTimestampMutex);
 
-        if (fillErrorSamples < 10000) {
-            fillErrorAccumulated += (Float64)(fill - targetFillFrames);
-            fillErrorSamples += 1;
+            if (phaseErrorSamples < 10000) {
+                Float64 phaseFrames = proxySampleTimeForHostTimeNoLock(inOutputTime->mHostTime) - startFrame;
+                phaseErrorAccumulated += phaseFrames - phaseFramesAtAnchor;
+                phaseErrorSamples += 1;
+            }
         }
     }
 
@@ -5536,17 +5542,31 @@ Float64 ProxyAudioDevice::anchorInputOutputSampleDelta(const AudioTimeStamp *out
 
     {
         CAMutex::Locker locker(&getZeroTimestampMutex);
-        targetFillFrames = inputBuffer->mEndFrame - (SInt64)startFrame;
-        fillErrorAccumulated = 0.0;
-        fillErrorSamples = 0;
-        fillErrorIntegral = 0.0;
+        phaseFramesAtAnchor = proxySampleTimeForHostTimeNoLock(outputTime->mHostTime) - startFrame;
+        phaseErrorAccumulated = 0.0;
+        phaseErrorSamples = 0;
+        phaseErrorIntegral = 0.0;
     }
 
-    DebugMsg("ProxyAudio: anchored inputOutputSampleDelta at %.0f, target fill level %lld frames",
+    DebugMsg("ProxyAudio: anchored inputOutputSampleDelta at %.0f, fill level %lld frames, phase %.1f frames",
              inputOutputSampleDelta,
-             targetFillFrames);
+             inputBuffer->mEndFrame - (SInt64)startFrame,
+             phaseFramesAtAnchor);
 
     return startFrame;
+}
+
+Float64 ProxyAudioDevice::proxySampleTimeForHostTimeNoLock(UInt64 hostTime) {
+    // Called with getZeroTimestampMutex held. Projects the proxy device's time line (as reported
+    // through GetZeroTimeStamp) onto the given host time.
+    if (proxyHostTicksPerFrame <= 0.0) {
+        return 0.0;
+    }
+
+    UInt64 lastZeroHostTime = gDevice_AnchorHostTime + ((UInt64)gDevice_ElapsedTicks);
+    Float64 ticksSinceLastZero = (Float64)((SInt64)(hostTime - lastZeroHostTime));
+
+    return ((Float64)(gDevice_NumberTimeStamps * kDevice_RingBufferSize)) + ticksSinceLastZero / proxyHostTicksPerFrame;
 }
 
 void ProxyAudioDevice::updateProxyClockCorrectionNoLock() {
@@ -5557,24 +5577,24 @@ void ProxyAudioDevice::updateProxyClockCorrectionNoLock() {
         outputAccumulatedRateRatioSamples = 0;
     }
 
-    Float64 meanFillError = 0.0;
+    Float64 meanPhaseError = 0.0;
 
-    if (fillErrorSamples > 0) {
-        meanFillError = fillErrorAccumulated / (Float64)fillErrorSamples;
-        fillErrorAccumulated = 0.0;
-        fillErrorSamples = 0;
+    if (phaseErrorSamples > 0) {
+        meanPhaseError = phaseErrorAccumulated / (Float64)phaseErrorSamples;
+        phaseErrorAccumulated = 0.0;
+        phaseErrorSamples = 0;
 
-        fillErrorIntegral += meanFillError;
+        phaseErrorIntegral += meanPhaseError;
 
-        if (fillErrorIntegral > kProxyClockMaxIntegral) {
-            fillErrorIntegral = kProxyClockMaxIntegral;
-        } else if (fillErrorIntegral < -kProxyClockMaxIntegral) {
-            fillErrorIntegral = -kProxyClockMaxIntegral;
+        if (phaseErrorIntegral > kProxyClockMaxIntegral) {
+            phaseErrorIntegral = kProxyClockMaxIntegral;
+        } else if (phaseErrorIntegral < -kProxyClockMaxIntegral) {
+            phaseErrorIntegral = -kProxyClockMaxIntegral;
         }
 
-        // A positive fill error means input is being written faster than it is being read, i.e. the
-        // proxy clock is running fast relative to the target device, so lengthen the period.
-        Float64 correction = kProxyClockGainP * meanFillError + kProxyClockGainI * fillErrorIntegral;
+        // A positive phase error means the proxy clock has gained on the target device's clock,
+        // i.e. input is being written faster than it is read, so lengthen the period.
+        Float64 correction = kProxyClockGainP * meanPhaseError + kProxyClockGainI * phaseErrorIntegral;
 
         if (correction > kProxyClockMaxCorrection) {
             correction = kProxyClockMaxCorrection;
@@ -5589,10 +5609,10 @@ void ProxyAudioDevice::updateProxyClockCorrectionNoLock() {
     // Roughly every 24 seconds at 44.1 kHz
     if (++proxyClockPeriodsSinceLog >= 64) {
         proxyClockPeriodsSinceLog = 0;
-        DebugMsg("ProxyAudio: clock servo: mean fill error %.1f frames, integral %.0f, correction %+.1f ppm, "
+        DebugMsg("ProxyAudio: clock servo: mean phase error %.1f frames, integral %.0f, correction %+.1f ppm, "
                  "target rate ratio %.6f",
-                 meanFillError,
-                 fillErrorIntegral,
+                 meanPhaseError,
+                 phaseErrorIntegral,
                  (proxyClockCorrection - 1.0) * 1e6,
                  outputRateRatio);
     }
