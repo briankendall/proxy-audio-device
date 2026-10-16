@@ -559,7 +559,7 @@ class ProxyAudioDevice {
     Float64 gDevice_ElapsedTicks = 0.0;
     UInt64 gDevice_AnchorHostTime = 0;
     bool gStream_Output_IsActive = true;
-    const Float32 kVolume_MinDB = -25.0;
+    const Float32 kVolume_MinDB = -40.0;
     const Float32 kVolume_MaxDB = 0.0;
     Float32 gVolume_Output_L_Value = 0.0;
     Float32 gVolume_Output_R_Value = 0.0;
