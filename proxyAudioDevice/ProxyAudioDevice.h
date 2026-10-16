@@ -32,6 +32,14 @@ enum {
 // Default to false so the proxy device stays visible even when the target is
 // unavailable. This preserves the long-standing behavior for existing users.
 #define kOutputDeviceDefaultHideWhenUnavailable false
+// Default to true: when a higher-priority device in the chain becomes available
+// again, automatically switch back up to it. Users who prefer to avoid
+// mid-playback interruptions can turn this off (sticky behavior).
+#define kOutputDeviceDefaultAutoFailback true
+// Separator used to serialize the ordered priority list of device UIDs into a
+// single string for the configuration channel. Device UIDs never contain a
+// newline, so it is a safe delimiter.
+#define kOutputDevicePriorityListSeparator CFSTR("\n")
 
 // Proxy clock servo (see GetZeroTimeStamp / updateProxyClockCorrectionNoLock). The proxy device's
 // clock is synthetic, so rather than letting it free-run at a rate estimated from the target
@@ -54,16 +62,29 @@ class ProxyAudioDevice {
   public:
     enum class ConfigType {
         none,
-        outputDevice,
+        outputDevicePriorityList,
         outputDeviceBufferFrameSize,
         deviceName,
         deviceActiveCondition,
-        deviceHideWhenUnavailable
+        deviceHideWhenUnavailable,
+        outputDeviceAutoFailback,
+        // Read-only: the UID of the device the driver is currently routing audio
+        // to (a chain entry or the system-default fallback). Used by the settings
+        // app to mark the active row. Empty string when nothing is available.
+        currentActiveOutputDevice
     };
     enum class ActiveCondition { proxiedDeviceActive = 0, userActive = 1, always = 2 };
 
     ProxyAudioDevice() : inputIOIsActive(false) {};
-    AudioDevice findTargetOutputAudioDevice();
+    // Resolves the device that should currently be active by walking the priority
+    // chain. currentActiveUID is the UID of the device presently in use (or NULL),
+    // used to honor sticky behavior when auto-failback is disabled.
+    AudioDevice findTargetOutputAudioDevice(CFStringRef currentActiveUID);
+    // Pure selection step: returns a newly-retained UID (+1, caller releases) of
+    // the device that should be active given the chain, current availability, the
+    // auto-failback setting, and the currently-active device. Returns NULL when
+    // neither any listed device nor the system-default fallback is available.
+    CFStringRef copyChosenTargetDeviceUID(CFStringRef currentActiveUID);
     static int outputDeviceAliveListenerStatic(AudioObjectID inObjectID,
                                                UInt32 inNumberAddresses,
                                                const AudioObjectPropertyAddress *inAddresses,
@@ -124,14 +145,28 @@ class ProxyAudioDevice {
     CFStringRef copyDeviceNameFromStorage();
     void setDeviceName(CFStringRef newName);
     CFStringRef copyDefaultProxyOutputDeviceUID();
-    CFStringRef copyOutputDeviceUIDFromStorage();
-    void setOutputDevice(CFStringRef deviceUID);
+    CFArrayRef copyOutputDevicePriorityListFromStorage();
+    void setOutputDevicePriorityList(CFStringRef newlineDelimitedUIDs);
+    CFStringRef copyOutputDevicePriorityListAsString();
+    void updateCurrentActiveOutputDeviceUID(AudioObjectID activeDeviceID);
     UInt32 retrieveOutputDeviceBufferFrameSizeFromStorage();
     void setOutputDeviceBufferFrameSize(UInt32 size);
     ActiveCondition retrieveOutputDeviceActiveConditionFromStorage();
     void setOutputDeviceActiveCondition(ActiveCondition newActiveCondition);
     bool retrieveOutputDeviceHideWhenUnavailableFromStorage();
     void setOutputDeviceHideWhenUnavailable(bool newHideWhenUnavailable);
+    bool retrieveOutputDeviceAutoFailbackFromStorage();
+    void setOutputDeviceAutoFailback(bool newAutoFailback);
+    // Pushes the proxy's current volume onto the active output device's hardware
+    // volume control, if that device has one (see outputDeviceHasHardwareVolume).
+    void applyVolumeToOutputDevice();
+    // Per-device volume memory: each device's last-used level is remembered by UID
+    // so switching to a device restores the volume it was last left at.
+    Float32 retrieveVolumeForDeviceUID(CFStringRef uid);
+    void saveVolumeForDeviceUID(CFStringRef uid, Float32 volume);
+    void saveVolumeForActiveDevice();
+    void restoreVolumeForActiveDevice();
+    void notifyVolumeChanged();
     void notifyHiddenPropertyChanged();
 
     static ProxyAudioDevice *deviceForDriver(void *inDriver);
@@ -529,6 +564,14 @@ class ProxyAudioDevice {
     pid_t configuratorPid = 0;
     CFStringRef deviceName = NULL;
     CFStringRef boxName = NULL;
+    // Ordered list of candidate output device UIDs, highest priority first.
+    // The driver routes audio to the highest-priority entry that is currently
+    // available, falling back to the system default when none are. Guarded by
+    // stateMutex.
+    CFArrayRef outputDevicePriorityList = NULL;
+    // The UID of the device audio is actually being routed to right now (a chain
+    // entry or the fallback), reported to the settings app so it can mark the
+    // active row. NULL when nothing is available. Guarded by stateMutex.
     CFStringRef outputDeviceUID = NULL;
     UInt32 outputDeviceBufferFrameSize = kOutputDeviceDefaultBufferFrameSize;
     // Proxy clock servo state. Everything below up to outputDeviceActiveCondition is protected by
@@ -545,6 +588,10 @@ class ProxyAudioDevice {
     UInt64 proxyClockPeriodsSinceLog = 0;
     ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     bool outputDeviceHideWhenUnavailable = kOutputDeviceDefaultHideWhenUnavailable;
+    // When true, automatically switch back up to a higher-priority device as soon
+    // as it becomes available; when false, stay on the current device until it
+    // becomes unavailable (sticky). Guarded by stateMutex.
+    bool outputDeviceAutoFailback = kOutputDeviceDefaultAutoFailback;
     
     UInt32 gPlugIn_RefCount = 0;
     AudioServerPlugInHostRef gPlugIn_Host = NULL;
@@ -564,6 +611,16 @@ class ProxyAudioDevice {
     Float32 gVolume_Output_L_Value = 0.0;
     Float32 gVolume_Output_R_Value = 0.0;
     bool gMute_Output_Mute = false;
+    // True when the active output device exposes a settable hardware volume, in
+    // which case the proxy drives that directly and the IO proc skips software
+    // attenuation (mute is still applied in software). Read from the realtime IO
+    // proc, so it's atomic.
+    std::atomic_bool outputDeviceHasHardwareVolume{false};
+    // The proxy's volume defaults to 0 and is only set once the system/user
+    // adjusts it (which happens when the proxy is selected as output). We don't
+    // push to a device's hardware volume until then, so we never zero a device's
+    // real hardware volume on startup. Guarded by stateMutex.
+    bool volumeHasBeenSet = false;
     const UInt32 gDevice_BytesPerFrameInChannel = 4;
     const UInt32 gDevice_ChannelsPerFrame = 2;
     const UInt32 gDevice_SafetyOffset = 0;

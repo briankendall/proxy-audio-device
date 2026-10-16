@@ -25,6 +25,12 @@ class AudioDevice {
                                    AudioObjectPropertyScope scope,
                                    AudioObjectPropertyElement element);
     void setBufferFrameSize(UInt32 bufferFrameSize);
+    // Returns true if this device exposes a settable output volume (master or
+    // per-channel), i.e. its hardware/driver volume can be controlled.
+    bool hasSettableVolumeControl();
+    // Sets the device's output volume (0..1 scalar) on whichever element is
+    // settable: master if available, otherwise the left/right channels.
+    void setVolumeScalar(Float32 volume);
     void setupIOProc(AudioDeviceIOProc inProc, void *clientData);
     void destroyIOProc();
     void start();

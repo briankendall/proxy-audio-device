@@ -170,6 +170,68 @@ void AudioDevice::setBufferFrameSize(UInt32 newBufferFrameSize) {
     }
 }
 
+bool AudioDevice::hasSettableVolumeControl() {
+    if (id == kAudioObjectUnknown) {
+        return false;
+    }
+
+    // Prefer the master element, then fall back to the left/right channels. A
+    // device "has volume control" if any of these is present and settable.
+    AudioObjectPropertyElement elements[] = {kAudioObjectPropertyElementMaster, 1, 2};
+
+    for (AudioObjectPropertyElement element : elements) {
+        AudioObjectPropertyAddress address = {
+            kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, element};
+
+        if (!AudioObjectHasProperty(id, &address)) {
+            continue;
+        }
+
+        Boolean settable = false;
+
+        if (AudioObjectIsPropertySettable(id, &address, &settable) == noErr && settable) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void AudioDevice::setVolumeScalar(Float32 volume) {
+    if (id == kAudioObjectUnknown) {
+        return;
+    }
+
+    if (volume < 0.0f) {
+        volume = 0.0f;
+    } else if (volume > 1.0f) {
+        volume = 1.0f;
+    }
+
+    // If the master element is settable, set that and we're done. Otherwise apply
+    // the same value to whichever of the left/right channels are settable.
+    AudioObjectPropertyAddress masterAddress = {
+        kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMaster};
+    Boolean settable = false;
+
+    if (AudioObjectHasProperty(id, &masterAddress)
+        && AudioObjectIsPropertySettable(id, &masterAddress, &settable) == noErr && settable) {
+        AudioObjectSetPropertyData(id, &masterAddress, 0, NULL, sizeof(volume), &volume);
+        return;
+    }
+
+    for (AudioObjectPropertyElement element : {(AudioObjectPropertyElement)1, (AudioObjectPropertyElement)2}) {
+        AudioObjectPropertyAddress channelAddress = {
+            kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, element};
+        settable = false;
+
+        if (AudioObjectHasProperty(id, &channelAddress)
+            && AudioObjectIsPropertySettable(id, &channelAddress, &settable) == noErr && settable) {
+            AudioObjectSetPropertyData(id, &channelAddress, 0, NULL, sizeof(volume), &volume);
+        }
+    }
+}
+
 void AudioDevice::setupIOProc(AudioDeviceIOProc inProc, void *clientData) {
     if (!isValid()) {
         syslog(LOG_WARNING,
