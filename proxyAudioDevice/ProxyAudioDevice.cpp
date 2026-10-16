@@ -5007,8 +5007,16 @@ void ProxyAudioDevice::resetInputData() {
 
     lastInputFrameTime = -1;
     lastInputBufferFrameSize = -1;
-    inputOutputSampleDelta = -1;
+    inputOutputSampleDeltaValid = false;
     inputFinalFrameTime = -1;
+    expectedOutputSampleTime = -1;
+
+    {
+        CAMutex::Locker servoLocker(&getZeroTimestampMutex);
+        phaseErrorAccumulated = 0.0;
+        phaseErrorSamples = 0;
+        phaseErrorIntegral = 0.0;
+    }
 }
 
 OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
@@ -5026,29 +5034,43 @@ OSStatus ProxyAudioDevice::StartIO(AudioServerPlugInDriverRef inDriver,
 #pragma unused(inClientID)
     
     DebugMsg("ProxyAudio: StartIO");
-    resetInputData();
+    bool firstClient = false;
 
-    CAMutex::Locker locker(stateMutex);
+    {
+        CAMutex::Locker locker(stateMutex);
 
-    //    figure out what we need to do
-    if (gDevice_IOIsRunning == UINT64_MAX) {
-        //    overflowing is an error
-        theAnswer = kAudioHardwareIllegalOperationError;
-    } else if (gDevice_IOIsRunning == 0) {
-        //    We need to start the hardware, which in this case is just anchoring the time line.
-        gDevice_IOIsRunning = 1;
-        gDevice_NumberTimeStamps = 0;
-        gDevice_AnchorSampleTime = 0;
-        gDevice_AnchorHostTime = mach_absolute_time();
-        gDevice_ElapsedTicks = 0;
-        outputAccumulatedRateRatio = 0.0;
-        outputAccumulatedRateRatioSamples = 0;
-    } else {
-        //    IO is already running, so just bump the counter
-        ++gDevice_IOIsRunning;
+        //    figure out what we need to do
+        if (gDevice_IOIsRunning == UINT64_MAX) {
+            //    overflowing is an error
+            theAnswer = kAudioHardwareIllegalOperationError;
+        } else if (gDevice_IOIsRunning == 0) {
+            //    We need to start the hardware, which in this case is just anchoring the time line.
+            firstClient = true;
+            gDevice_IOIsRunning = 1;
+            gDevice_NumberTimeStamps = 0;
+            gDevice_AnchorSampleTime = 0;
+            gDevice_AnchorHostTime = mach_absolute_time();
+            gDevice_ElapsedTicks = 0;
+        } else {
+            //    IO is already running, so just bump the counter
+            ++gDevice_IOIsRunning;
+        }
+
+        inputIOIsActive = (gDevice_IOIsRunning > 0);
     }
-    
-    inputIOIsActive = (gDevice_IOIsRunning > 0);
+
+    // Only the first client starts a new time line. Resetting the input data for every additional
+    // client would wipe the ring buffer under the clients that are already playing.
+    if (firstClient) {
+        {
+            CAMutex::Locker servoLocker(&getZeroTimestampMutex);
+            outputAccumulatedRateRatio = 0.0;
+            outputAccumulatedRateRatioSamples = 0;
+            proxyHostTicksPerFrame = gDevice_HostTicksPerFrame * outputRateRatio * proxyClockCorrection;
+        }
+        resetInputData();
+    }
+
     ExecuteInAudioOutputThread(^ () { updateOutputDeviceStartedState(); });
     
     DebugMsg("ProxyAudio: StartIO finished");
@@ -5064,7 +5086,7 @@ OSStatus ProxyAudioDevice::StopIO(AudioServerPlugInDriverRef inDriver,
 
 #pragma unused(inClientID)
     DebugMsg("ProxyAudio: StopIO");
-    inputFinalFrameTime = lastInputFrameTime + lastInputBufferFrameSize;
+    bool lastClient = false;
 
     //    declare the local variables
     OSStatus theAnswer = 0;
@@ -5088,13 +5110,23 @@ OSStatus ProxyAudioDevice::StopIO(AudioServerPlugInDriverRef inDriver,
         } else if (gDevice_IOIsRunning == 1) {
             //    We need to stop the hardware, which in this case means that there's nothing to do.
             gDevice_IOIsRunning = 0;
+            lastClient = true;
         } else {
             //    IO is still running, so just bump the counter
             --gDevice_IOIsRunning;
         }
+
+        inputIOIsActive = (gDevice_IOIsRunning > 0);
     }
-    
-    inputIOIsActive = (gDevice_IOIsRunning > 0);
+
+    // Only once the last client has stopped is there a final frame to play up to. Setting this
+    // while other clients are still running would silence the output permanently, since nothing
+    // clears it until the next resetInputData().
+    if (lastClient) {
+        CAMutex::Locker ioLocker(&IOMutex);
+        inputFinalFrameTime = lastInputFrameTime + lastInputBufferFrameSize;
+    }
+
     ExecuteInAudioOutputThread(^ () { updateOutputDeviceStartedState(); });
     
     DebugMsg("ProxyAudio: StopIO finished");
@@ -5124,8 +5156,6 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
     OSStatus theAnswer = 0;
     UInt64 theCurrentHostTime;
     Float64 theHostTicksPerRingBuffer;
-    Float64 theHostTickOffset;
-    UInt64 theNextHostTime;
 
     //    check the arguments
     FailWithAction(inDriver != gAudioServerPlugInDriverRef,
@@ -5143,36 +5173,32 @@ OSStatus ProxyAudioDevice::GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
         //    get the current host time
         theCurrentHostTime = mach_absolute_time();
 
-        // In order to keep the input and output IO in sync, we keep a running
-        // average of the output IO proc's mRateScalar field for its output time.
-        // Then each time we calculate the next zero timestamp we slightly adjust
-        // the tick count for our ring buffer by however much the output IO proc
-        // deviated from its sample rate.
-        
-        Float64 rateRatio = 1.0;
-        
-        if (outputAccumulatedRateRatioSamples > 0) {
-            rateRatio = outputAccumulatedRateRatio / outputAccumulatedRateRatioSamples;
-        }
-        
-        //    calculate the next host time
+        // The proxy device's clock is synthetic, so we make it follow the target device's clock:
+        // the length of each zero time stamp period is the nominal length scaled by the target
+        // device's measured rate scalar (feed-forward) and by a small correction that steers the
+        // ring buffer fill level back to its anchored value (feedback). Both are updated once per
+        // period in updateProxyClockCorrectionNoLock().
         theHostTicksPerRingBuffer =
-            gDevice_HostTicksPerFrame * ((Float64)kDevice_RingBufferSize) * rateRatio;
-        theHostTickOffset = gDevice_ElapsedTicks + theHostTicksPerRingBuffer;
-        theNextHostTime = gDevice_AnchorHostTime + ((UInt64)theHostTickOffset);
+            gDevice_HostTicksPerFrame * ((Float64)kDevice_RingBufferSize) * outputRateRatio * proxyClockCorrection;
+        proxyHostTicksPerFrame = theHostTicksPerRingBuffer / ((Float64)kDevice_RingBufferSize);
 
-        //    go to the next time if the next host time is less than the current time
-        if (theNextHostTime <= theCurrentHostTime) {
-            ++gDevice_NumberTimeStamps;
-            gDevice_ElapsedTicks += theHostTicksPerRingBuffer;
+        //    advance by however many whole periods have elapsed since the last zero time stamp
+        if (theHostTicksPerRingBuffer > 0.0) {
+            Float64 ticksSinceAnchor = (Float64)((SInt64)(theCurrentHostTime - gDevice_AnchorHostTime));
+            Float64 ticksSinceLastStamp = ticksSinceAnchor - gDevice_ElapsedTicks;
+
+            if (ticksSinceLastStamp >= theHostTicksPerRingBuffer) {
+                UInt64 periods = (UInt64)(ticksSinceLastStamp / theHostTicksPerRingBuffer);
+                gDevice_NumberTimeStamps += periods;
+                gDevice_ElapsedTicks += ((Float64)periods) * theHostTicksPerRingBuffer;
+                updateProxyClockCorrectionNoLock();
+            }
         }
 
         //    set the return values
         *outSampleTime = gDevice_NumberTimeStamps * kDevice_RingBufferSize;
         *outHostTime = gDevice_AnchorHostTime + gDevice_ElapsedTicks;
         *outSeed = 1;
-        outputAccumulatedRateRatio = 0.0;
-        outputAccumulatedRateRatioSamples = 0;
     }
 
 Done:
@@ -5296,10 +5322,24 @@ OSStatus ProxyAudioDevice::DoIOOperation(AudioServerPlugInDriverRef inDriver,
     } else if (inOperationID == kAudioServerPlugInIOOperationWriteMix) {
         if (inputBuffer) {
             CAMutex::Locker locker(IOMutex);
+            Float64 inputSampleTime = inIOCycleInfo->mOutputTime.mSampleTime;
 
-            inputBuffer->Store((const Byte *)ioMainBuffer, inIOBufferFrameSize, inIOCycleInfo->mOutputTime.mSampleTime);
-            
-            lastInputFrameTime = inIOCycleInfo->mOutputTime.mSampleTime;
+            // If our own time line has jumped (which should only happen if the host resynchronized
+            // to our clock), the read position in the ring buffer must be re-anchored.
+            if (lastInputFrameTime >= 0) {
+                Float64 jump = inputSampleTime - (lastInputFrameTime + lastInputBufferFrameSize);
+
+                if (jump < 0 || jump > kTimelineJumpToleranceFrames) {
+                    syslog(LOG_NOTICE,
+                           "ProxyAudio: proxy device time line discontinuity of %.0f frames, re-anchoring",
+                           jump);
+                    inputOutputSampleDeltaValid = false;
+                }
+            }
+
+            inputBuffer->Store((const Byte *)ioMainBuffer, inIOBufferFrameSize, (SInt64)inputSampleTime);
+
+            lastInputFrameTime = inputSampleTime;
             lastInputBufferFrameSize = inIOBufferFrameSize;
             inputCycleCount += 1;
         }
@@ -5357,16 +5397,45 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     
     {
         CAMutex::Locker locker(&getZeroTimestampMutex);
-        
-        // We don't need to keep taking samples of the device's ratio past
-        // 10000 samples. If we get that far then the device is idling.
-        if (outputAccumulatedRateRatioSamples < 10000) {
+
+        // Keep a running average of the target device's rate scalar for the proxy clock to use as
+        // feed-forward. Only trust it when the HAL says it's valid and it is plausible. We don't
+        // need to keep taking samples past 10000; if we get that far then the device is idling.
+        if ((inOutputTime->mFlags & kAudioTimeStampRateScalarValid) && inOutputTime->mRateScalar > 0.9
+            && inOutputTime->mRateScalar < 1.1 && outputAccumulatedRateRatioSamples < 10000) {
             outputAccumulatedRateRatio += inOutputTime->mRateScalar;
             outputAccumulatedRateRatioSamples += 1;
         }
     }
-    
+
     inputCycleCount = 0;
+
+    // Detect the target device having established a new time line. coreaudiod restarts a device's
+    // IO engine underneath our IO proc without telling us (e.g. HDMI/DisplayPort audio when the
+    // display wakes, USB audio when usbaudiod restarts, sample rate changes made by other
+    // processes), and the sample times we're given then restart from zero. The read position in
+    // the ring buffer is relative to those sample times, so it must be re-anchored.
+    UInt32 framesThisCycle = currentOutputDeviceBufferFrameSize;
+
+    if (outOutputData->mNumberBuffers > 0 && outOutputData->mBuffers[0].mNumberChannels > 0) {
+        framesThisCycle =
+            outOutputData->mBuffers[0].mDataByteSize / (outOutputData->mBuffers[0].mNumberChannels * sizeof(Float32));
+    }
+
+    if (expectedOutputSampleTime >= 0) {
+        Float64 jump = inOutputTime->mSampleTime - expectedOutputSampleTime;
+
+        if (jump < 0 || jump > kTimelineJumpToleranceFrames) {
+            syslog(LOG_NOTICE,
+                   "ProxyAudio: target device time line discontinuity of %.0f frames (sample time now %.0f), "
+                   "re-anchoring",
+                   jump,
+                   inOutputTime->mSampleTime);
+            inputOutputSampleDeltaValid = false;
+        }
+    }
+
+    expectedOutputSampleTime = inOutputTime->mSampleTime + framesThisCycle;
 
     if (lastInputFrameTime < 0 || lastInputBufferFrameSize < 0) {
         return noErr;
@@ -5377,35 +5446,48 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         return noErr;
     }
 
-    if (inputOutputSampleDelta == -1) {
-        DebugMsg("ProxyAudio: outputDeviceIOProc recalculating inputOutputSampleDelta");
-        Float64 targetFrameTime = (lastInputFrameTime - lastInputBufferFrameSize - currentOutputDeviceBufferFrameSize
-                                   - currentOutputDeviceSafetyOffset);
-        inputOutputSampleDelta = targetFrameTime - inOutputTime->mSampleTime;
-        smallestFramesToBufferEnd = -1;
-    }
+    Float64 startFrame;
 
-    Float64 startFrame = inOutputTime->mSampleTime + inputOutputSampleDelta;
+    if (!inputOutputSampleDeltaValid) {
+        startFrame = anchorInputOutputSampleDelta(
+            inOutputTime, currentOutputDeviceBufferFrameSize, currentOutputDeviceSafetyOffset);
+    } else {
+        startFrame = inOutputTime->mSampleTime + inputOutputSampleDelta;
+    }
 
     if (inputFinalFrameTime != -1 && startFrame >= inputFinalFrameTime) {
         return noErr;
     }
 
-    bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
+    if (inputFinalFrameTime == -1) {
+        SInt64 fill = inputBuffer->mEndFrame - (SInt64)startFrame;
+        SInt64 capacity = (SInt64)inputBuffer->mCapacityFrames;
 
-#if DEBUG
-    // This is just some debugging info to tell when we might be gradually
-    // approaching the end of the input buffer and headed for a buffer
-    // overrun
-    SInt64 framesToBufferEnd =
-        inputBuffer->mEndFrame - (SInt64(startFrame) + SInt64(currentOutputDeviceBufferFrameSize));
+        // Last resort: if the read position is somehow outside the ring buffer entirely while input
+        // is still flowing, re-anchor rather than play silence forever. With the time line checks
+        // above this should never trigger.
+        if (fill > capacity || fill < -capacity) {
+            syslog(
+                LOG_WARNING, "ProxyAudio: ring buffer fill level of %lld frames is out of range, re-anchoring", fill);
+            startFrame = anchorInputOutputSampleDelta(
+                inOutputTime, currentOutputDeviceBufferFrameSize, currentOutputDeviceSafetyOffset);
+            fill = inputBuffer->mEndFrame - (SInt64)startFrame;
+        }
 
-    if (smallestFramesToBufferEnd == -1
-        || (framesToBufferEnd < smallestFramesToBufferEnd && smallestFramesToBufferEnd >= 0)) {
-        smallestFramesToBufferEnd = framesToBufferEnd;
-        //DebugMsg("ProxyAudio: frames to buffer end shrunk, is now: %lld", smallestFramesToBufferEnd);
+        // Feed the phase error between the proxy clock and the target device's clock to the proxy
+        // clock servo (consumed in GetZeroTimeStamp).
+        if (inOutputTime->mFlags & kAudioTimeStampHostTimeValid) {
+            CAMutex::Locker locker(&getZeroTimestampMutex);
+
+            if (phaseErrorSamples < 10000) {
+                Float64 phaseFrames = proxySampleTimeForHostTimeNoLock(inOutputTime->mHostTime) - startFrame;
+                phaseErrorAccumulated += phaseFrames - phaseFramesAtAnchor;
+                phaseErrorSamples += 1;
+            }
+        }
     }
-#endif
+
+    bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
 
     if (overrun && inputFinalFrameTime == -1 && startFrame >= inputBuffer->mStartFrame) {
         // Since this warning could conceivably happen every cycle, explicitly make it
@@ -5446,6 +5528,95 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     }
 
     return noErr;
+}
+
+Float64 ProxyAudioDevice::anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime,
+                                                       UInt32 outputBufferFrameSize,
+                                                       UInt32 safetyOffset) {
+    // Must be called with IOMutex held. Positions the read position the usual distance behind the
+    // newest input data and makes that the fill level the proxy clock servo will try to hold.
+    Float64 startFrame =
+        lastInputFrameTime - lastInputBufferFrameSize - (Float64)outputBufferFrameSize - (Float64)safetyOffset;
+    inputOutputSampleDelta = startFrame - outputTime->mSampleTime;
+    inputOutputSampleDeltaValid = true;
+
+    {
+        CAMutex::Locker locker(&getZeroTimestampMutex);
+        phaseFramesAtAnchor = proxySampleTimeForHostTimeNoLock(outputTime->mHostTime) - startFrame;
+        phaseErrorAccumulated = 0.0;
+        phaseErrorSamples = 0;
+        phaseErrorIntegral = 0.0;
+    }
+
+    DebugMsg("ProxyAudio: anchored inputOutputSampleDelta at %.0f, fill level %lld frames, phase %.1f frames",
+             inputOutputSampleDelta,
+             inputBuffer->mEndFrame - (SInt64)startFrame,
+             phaseFramesAtAnchor);
+
+    return startFrame;
+}
+
+Float64 ProxyAudioDevice::proxySampleTimeForHostTimeNoLock(UInt64 hostTime) {
+    // Called with getZeroTimestampMutex held. Projects the proxy device's time line (as reported
+    // through GetZeroTimeStamp) onto the given host time.
+    if (proxyHostTicksPerFrame <= 0.0) {
+        return 0.0;
+    }
+
+    UInt64 lastZeroHostTime = gDevice_AnchorHostTime + ((UInt64)gDevice_ElapsedTicks);
+    Float64 ticksSinceLastZero = (Float64)((SInt64)(hostTime - lastZeroHostTime));
+
+    return ((Float64)(gDevice_NumberTimeStamps * kDevice_RingBufferSize)) + ticksSinceLastZero / proxyHostTicksPerFrame;
+}
+
+void ProxyAudioDevice::updateProxyClockCorrectionNoLock() {
+    // Called with getZeroTimestampMutex held, once per zero time stamp period.
+    if (outputAccumulatedRateRatioSamples > 0) {
+        outputRateRatio = outputAccumulatedRateRatio / (Float64)outputAccumulatedRateRatioSamples;
+        outputAccumulatedRateRatio = 0.0;
+        outputAccumulatedRateRatioSamples = 0;
+    }
+
+    Float64 meanPhaseError = 0.0;
+
+    if (phaseErrorSamples > 0) {
+        meanPhaseError = phaseErrorAccumulated / (Float64)phaseErrorSamples;
+        phaseErrorAccumulated = 0.0;
+        phaseErrorSamples = 0;
+
+        phaseErrorIntegral += meanPhaseError;
+
+        if (phaseErrorIntegral > kProxyClockMaxIntegral) {
+            phaseErrorIntegral = kProxyClockMaxIntegral;
+        } else if (phaseErrorIntegral < -kProxyClockMaxIntegral) {
+            phaseErrorIntegral = -kProxyClockMaxIntegral;
+        }
+
+        // A positive phase error means the proxy clock has gained on the target device's clock,
+        // i.e. input is being written faster than it is read, so lengthen the period.
+        Float64 correction = kProxyClockGainP * meanPhaseError + kProxyClockGainI * phaseErrorIntegral;
+
+        if (correction > kProxyClockMaxCorrection) {
+            correction = kProxyClockMaxCorrection;
+        } else if (correction < -kProxyClockMaxCorrection) {
+            correction = -kProxyClockMaxCorrection;
+        }
+
+        proxyClockCorrection = 1.0 + correction;
+    }
+
+#if DEBUG
+    // Roughly every 24 seconds at 44.1 kHz
+    if (++proxyClockPeriodsSinceLog >= 64) {
+        proxyClockPeriodsSinceLog = 0;
+        DebugMsg("ProxyAudio: clock servo: mean phase error %.1f frames, integral %.0f, correction %+.1f ppm, "
+                 "target rate ratio %.6f",
+                 meanPhaseError,
+                 phaseErrorIntegral,
+                 (proxyClockCorrection - 1.0) * 1e6,
+                 outputRateRatio);
+    }
+#endif
 }
 
 void ProxyAudioDevice::calculateVolumeFactors(Float32 volumeL,

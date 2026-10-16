@@ -33,6 +33,23 @@ enum {
 // unavailable. This preserves the long-standing behavior for existing users.
 #define kOutputDeviceDefaultHideWhenUnavailable false
 
+// Proxy clock servo (see GetZeroTimeStamp / updateProxyClockCorrectionNoLock). The proxy device's
+// clock is synthetic, so rather than letting it free-run at a rate estimated from the target
+// device's rate scalar alone, its rate is steered so that the ring buffer fill level measured in
+// the target device's IO proc stays at the level it had when the read position was anchored. The
+// error signal is the phase between the two clocks in frames, measured by projecting the proxy's
+// time line onto the host time of each target device IO cycle (a continuous quantity), rather than
+// the ring buffer's write pointer, which only advances once per input cycle and so carries a
+// phase-dependent offset of up to one input buffer.
+// Gains are per frame of phase error, applied once per zero time stamp period.
+#define kProxyClockGainP (1.0 / (64.0 * 16384.0))
+#define kProxyClockGainI (kProxyClockGainP / 128.0)
+#define kProxyClockMaxCorrection 500e-6
+#define kProxyClockMaxIntegral (kProxyClockMaxCorrection / kProxyClockGainI)
+// A forward jump in a device's IO sample time larger than this (or any backward jump) is treated
+// as the device having established a new time line, e.g. after coreaudiod restarted its IO engine.
+#define kTimelineJumpToleranceFrames 16384.0
+
 class ProxyAudioDevice {
   public:
     enum class ConfigType {
@@ -90,6 +107,11 @@ class ProxyAudioDevice {
                                 const AudioTimeStamp *inInputTime,
                                 AudioBufferList *outOutputData,
                                 const AudioTimeStamp *inOutputTime);
+    Float64 anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime,
+                                         UInt32 outputBufferFrameSize,
+                                         UInt32 safetyOffset);
+    void updateProxyClockCorrectionNoLock();
+    Float64 proxySampleTimeForHostTimeNoLock(UInt64 hostTime);
     void calculateVolumeFactors(Float32 volumeL,
                                 Float32 volumeR,
                                 bool mute,
@@ -497,8 +519,11 @@ class ProxyAudioDevice {
     std::atomic_bool inputIOIsActive;
     Float64 lastInputFrameTime = -1;
     Float64 lastInputBufferFrameSize = -1;
-    Float64 inputOutputSampleDelta = -1;
+    Float64 inputOutputSampleDelta = 0;
+    bool inputOutputSampleDeltaValid = false;
     Float64 inputFinalFrameTime = -1;
+    // Sample time we expect the target device's next IO cycle to start at, or -1 if unknown.
+    Float64 expectedOutputSampleTime = -1;
     int inputCycleCount = 0;
     ConfigType nextConfigurationToRead = ConfigType::none;
     pid_t configuratorPid = 0;
@@ -506,9 +531,18 @@ class ProxyAudioDevice {
     CFStringRef boxName = NULL;
     CFStringRef outputDeviceUID = NULL;
     UInt32 outputDeviceBufferFrameSize = kOutputDeviceDefaultBufferFrameSize;
-    SInt64 smallestFramesToBufferEnd = -1;
+    // Proxy clock servo state. Everything below up to outputDeviceActiveCondition is protected by
+    // getZeroTimestampMutex.
     Float64 outputAccumulatedRateRatio = 0.0;
     UInt64 outputAccumulatedRateRatioSamples = 0;
+    Float64 outputRateRatio = 1.0;
+    Float64 proxyClockCorrection = 1.0;
+    Float64 proxyHostTicksPerFrame = 0.0;
+    Float64 phaseFramesAtAnchor = 0.0;
+    Float64 phaseErrorAccumulated = 0.0;
+    UInt64 phaseErrorSamples = 0;
+    Float64 phaseErrorIntegral = 0.0;
+    UInt64 proxyClockPeriodsSinceLog = 0;
     ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     bool outputDeviceHideWhenUnavailable = kOutputDeviceDefaultHideWhenUnavailable;
     
