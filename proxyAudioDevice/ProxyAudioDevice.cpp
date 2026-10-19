@@ -24,15 +24,56 @@ std::string CFStringToStdString(CFStringRef s) {
     if (!s) {
         return std::string("<null>");
     }
-    
+
     char *buffer;
     size_t length = CFStringGetLength(s) + 1;
     buffer = new char[length];
     CFStringGetCString(s, buffer, length, kCFStringEncodingUTF8);
     std::string result(buffer);
     delete buffer;
-    
+
     return result;
+}
+
+// Splits a string on ':' and returns the components.
+static std::vector<std::string> splitOnColon(const std::string &s) {
+    std::vector<std::string> result;
+    size_t start = 0;
+    size_t pos;
+    while ((pos = s.find(':', start)) != std::string::npos) {
+        result.push_back(s.substr(start, pos - start));
+        start = pos + 1;
+    }
+    result.push_back(s.substr(start));
+    return result;
+}
+
+// Returns true iff `candidate` represents the same physical USB audio device as
+// `target`, ignoring the USB location ID. macOS embeds the location ID into the
+// synthesized UID for AppleUSBAudioEngine devices that have no serial number,
+// which means plugging the same device into a different USB/Thunderbolt port
+// changes its UID. We tolerate that by matching every other UID component
+// exactly.
+//
+// The UID format we accept (exactly 5 ':'-separated components) is:
+//     AppleUSBAudioEngine:<Manufacturer>:<Product>:<LocationID>:<Stream#>
+//
+// Only the LocationID field is allowed to differ. We require an exact match on
+// the prefix, manufacturer, product, and stream-number fields, which is strict
+// enough that distinct devices from the same vendor still won't be confused.
+static bool isSameUSBDeviceDifferentPort(CFStringRef target, CFStringRef candidate) {
+    if (!target || !candidate) {
+        return false;
+    }
+    std::vector<std::string> t = splitOnColon(CFStringToStdString(target));
+    std::vector<std::string> c = splitOnColon(CFStringToStdString(candidate));
+    if (t.size() != 5 || c.size() != 5) return false;
+    if (t[0] != "AppleUSBAudioEngine" || c[0] != "AppleUSBAudioEngine") return false;
+    if (t[1] != c[1]) return false;
+    if (t[2] != c[2]) return false;
+    // t[3] / c[3] is the LocationID and is allowed to differ.
+    if (t[4] != c[4]) return false;
+    return true;
 }
 
 #pragma mark The Interface
@@ -4665,20 +4706,23 @@ AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
     DebugMsg("ProxyAudio: findTargetOutputAudioDevice");
     std::vector<AudioObjectID> devices = AudioDevice::allAudioDevices();
     CFStringSmartRef currentOutputDeviceUID;
-    
+
     {
         CAMutex::Locker locker(&stateMutex);
-        
+
         if (!outputDeviceUID) {
             DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, output device UID is null");
             return AudioDevice();
         }
-        
+
         currentOutputDeviceUID = CFStringCreateCopy(NULL, outputDeviceUID);
     }
-    
+
     DebugMsg("ProxyAudio: findTargetOutputAudioDevice target UID: %s", CFStringToStdString(currentOutputDeviceUID).c_str());
-    
+
+    // First pass: look for an exact UID match. This is the common path.
+    AudioObjectID fallbackMatch = kAudioObjectUnknown;
+
     for (AudioObjectID device : devices) {
         AudioObjectPropertyAddress propertyAddress = {
             kAudioDevicePropertyDeviceUID, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMaster};
@@ -4692,11 +4736,30 @@ AudioDevice ProxyAudioDevice::findTargetOutputAudioDevice() {
                 DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, found output device");
                 return AudioDevice(device);
             }
+
+            // Note any candidate that looks like the same physical USB device
+            // plugged into a different port. We don't return it yet -- we want
+            // the exact-match pass to win if there is one.
+            if (fallbackMatch == kAudioObjectUnknown
+                && isSameUSBDeviceDifferentPort(currentOutputDeviceUID, uid)) {
+                fallbackMatch = device;
+            }
         }
     }
 
-    DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, not not find output device");
-    
+    // Second pass result: same physical USB device on a different port.
+    // Common case: a Thunderbolt dock plugged into a different port on the Mac.
+    // We deliberately do NOT update outputDeviceUID here; if the user really
+    // wants the new UID persisted, they can re-pick the device from the
+    // settings app. Leaving the stored UID alone means that returning to the
+    // original port will keep working without surprise.
+    if (fallbackMatch != kAudioObjectUnknown) {
+        DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, matched same USB device on a different port");
+        return AudioDevice(fallbackMatch);
+    }
+
+    DebugMsg("ProxyAudio: findTargetOutputAudioDevice finished, did not find output device");
+
     return AudioDevice();
 }
 
@@ -4889,11 +4952,16 @@ void ProxyAudioDevice::matchOutputDeviceSampleRate()
 
 void ProxyAudioDevice::setupTargetOutputDevice() {
     DebugMsg("ProxyAudio: setupTargetOutputDevice");
+
+    // Cancel any pending retry from a previous failed setup. Anything
+    // scheduled before this call will see a different generation and skip.
+    int generation = ++targetDeviceSearchGeneration;
+
     AudioDevice newOutputDevice = findTargetOutputAudioDevice();
 
     DebugMsg("ProxyAudio: setupTargetOutputDevice newOutputDevice: %d", newOutputDevice.id);
     CAMutex::Locker locker(outputDeviceMutex);
-    
+
     if (outputDevice.isValid() && outputDevice.id == newOutputDevice.id
         && outputDevice.bufferFrameSize == outputDeviceBufferFrameSize) {
         DebugMsg("ProxyAudio: setupTargetOutputDevice no change in device");
@@ -4926,7 +4994,34 @@ void ProxyAudioDevice::setupTargetOutputDevice() {
         matchOutputDeviceSampleRateNoLock();
     } else {
         syslog(LOG_WARNING, "ProxyAudio: setupTargetOutputDevice could not find output device");
+        // The device-list listener will fire when the system enumerates devices
+        // again, but some real-world cases (sleep/wake, transient Bluetooth
+        // dropouts) don't reliably trigger it. Schedule a periodic retry so we
+        // can recover on our own if the target device reappears.
+        scheduleTargetDeviceRetry(generation);
     }
+}
+
+void ProxyAudioDevice::scheduleTargetDeviceRetry(int generation) {
+    // 5-second retry interval: long enough that a Bluetooth or USB hiccup will
+    // typically have resolved, short enough that the user won't be staring at
+    // a silent system for long.
+    const uint64_t kRetryDelayNs = 5ull * NSEC_PER_SEC;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kRetryDelayNs),
+                   AudioOutputDispatchQueue(),
+                   ^() {
+                       // If another setup ran in the meantime (user picked a
+                       // different device, or device-list listener fired), our
+                       // generation is stale and we should bow out -- the new
+                       // call already handled or rescheduled retry.
+                       if (generation != targetDeviceSearchGeneration.load()) {
+                           DebugMsg("ProxyAudio: target device retry skipped, generation stale");
+                           return;
+                       }
+                       DebugMsg("ProxyAudio: target device retry firing");
+                       setupTargetOutputDevice();
+                   });
 }
 
 void ProxyAudioDevice::initializeOutputDevice() {
