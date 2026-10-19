@@ -110,6 +110,10 @@ class ProxyAudioDevice {
     Float64 anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime,
                                          UInt32 outputBufferFrameSize,
                                          UInt32 safetyOffset);
+    bool hasSustainedExcessLatency(Float64 startFrame,
+                                   Float64 sampleRate,
+                                   UInt32 outputBufferFrameSize,
+                                   UInt32 safetyOffset);
     void updateProxyClockCorrectionNoLock();
     Float64 proxySampleTimeForHostTimeNoLock(UInt64 hostTime);
     void calculateVolumeFactors(Float32 volumeL,
@@ -522,6 +526,8 @@ class ProxyAudioDevice {
     Float64 inputOutputSampleDelta = 0;
     bool inputOutputSampleDeltaValid = false;
     Float64 inputFinalFrameTime = -1;
+    Float64 excessLatencyFrames = 0;
+    Float64 lastLatencyCheckInputFrameTime = -1;
     // Sample time we expect the target device's next IO cycle to start at, or -1 if unknown.
     Float64 expectedOutputSampleTime = -1;
     int inputCycleCount = 0;
