@@ -64,6 +64,16 @@ Clone the repo, open the Xcode project and build the driver and the settings app
 
 If you make the audio buffer too small then the driver will introduce pops, crackles, or distortion. If you notice that then try increasing the buffer size.
 
+The driver automatically skips stale buffered audio if excess delay above its normal buffering budget
+exceeds 50 ms (or two input buffers, whichever is larger) for at least 250 ms of newly observed input.
+Recovery can cause a brief audible skip, but does not restart the output device or interrupt the
+final buffered audio when playback stops.
+
+### Driver regression tests
+
+On macOS with Xcode installed, run `bash tests/run-audio-latency-tests.sh`. The tests use simulated
+audio callbacks; they do not install the driver or change system audio devices.
+
 
 ### Possible Future Work
 

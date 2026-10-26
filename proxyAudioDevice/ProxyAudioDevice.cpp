@@ -5010,6 +5010,8 @@ void ProxyAudioDevice::resetInputData() {
     inputOutputSampleDeltaValid = false;
     inputFinalFrameTime = -1;
     expectedOutputSampleTime = -1;
+    excessLatencyFrames = 0;
+    lastLatencyCheckInputFrameTime = -1;
 
     {
         CAMutex::Locker servoLocker(&getZeroTimestampMutex);
@@ -5474,6 +5476,19 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
             fill = inputBuffer->mEndFrame - (SInt64)startFrame;
         }
 
+        if (hasSustainedExcessLatency(startFrame,
+                                     currentInputDeviceSampleRate,
+                                     currentOutputDeviceBufferFrameSize,
+                                     currentOutputDeviceSafetyOffset)) {
+            Float64 targetFill =
+                2.0 * lastInputBufferFrameSize + currentOutputDeviceBufferFrameSize + currentOutputDeviceSafetyOffset;
+            syslog(LOG_NOTICE,
+                   "ProxyAudio: sustained excess audio latency of %.1f ms, re-anchoring",
+                   1000.0 * (fill - targetFill) / currentInputDeviceSampleRate);
+            startFrame = anchorInputOutputSampleDelta(
+                inOutputTime, currentOutputDeviceBufferFrameSize, currentOutputDeviceSafetyOffset);
+        }
+
         // Feed the phase error between the proxy clock and the target device's clock to the proxy
         // clock servo (consumed in GetZeroTimeStamp).
         if (inOutputTime->mFlags & kAudioTimeStampHostTimeValid) {
@@ -5539,6 +5554,8 @@ Float64 ProxyAudioDevice::anchorInputOutputSampleDelta(const AudioTimeStamp *out
         lastInputFrameTime - lastInputBufferFrameSize - (Float64)outputBufferFrameSize - (Float64)safetyOffset;
     inputOutputSampleDelta = startFrame - outputTime->mSampleTime;
     inputOutputSampleDeltaValid = true;
+    excessLatencyFrames = 0;
+    lastLatencyCheckInputFrameTime = lastInputFrameTime;
 
     {
         CAMutex::Locker locker(&getZeroTimestampMutex);
@@ -5554,6 +5571,32 @@ Float64 ProxyAudioDevice::anchorInputOutputSampleDelta(const AudioTimeStamp *out
              phaseFramesAtAnchor);
 
     return startFrame;
+}
+
+bool ProxyAudioDevice::hasSustainedExcessLatency(Float64 startFrame,
+                                                 Float64 sampleRate,
+                                                 UInt32 outputBufferFrameSize,
+                                                 UInt32 safetyOffset) {
+    // Called with IOMutex held. Allow normal callback phase variation above the anchor's fill level.
+    Float64 targetFill = 2.0 * lastInputBufferFrameSize + outputBufferFrameSize + safetyOffset;
+    Float64 excess = (Float64)inputBuffer->mEndFrame - startFrame - targetFill;
+    Float64 threshold = std::max(0.050 * sampleRate, 2.0 * lastInputBufferFrameSize);
+    Float64 previousInputFrameTime = lastLatencyCheckInputFrameTime;
+    lastLatencyCheckInputFrameTime = lastInputFrameTime;
+
+    if (inputFinalFrameTime != -1 || lastInputFrameTime < 0 || lastInputBufferFrameSize <= 0
+        || excess <= threshold || previousInputFrameTime < 0 || lastInputFrameTime < previousInputFrameTime) {
+        excessLatencyFrames = 0;
+        return false;
+    }
+
+    if (lastInputFrameTime == previousInputFrameTime) {
+        return false;
+    }
+
+    // Count only newly observed input, not time spent stalled or callbacks replaying the same input.
+    excessLatencyFrames += std::min(lastInputFrameTime - previousInputFrameTime, lastInputBufferFrameSize);
+    return excessLatencyFrames >= 0.250 * sampleRate;
 }
 
 Float64 ProxyAudioDevice::proxySampleTimeForHostTimeNoLock(UInt64 hostTime) {
