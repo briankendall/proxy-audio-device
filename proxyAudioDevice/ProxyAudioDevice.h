@@ -89,7 +89,7 @@ class ProxyAudioDevice {
                             UInt32 inNumberAddresses,
                             const AudioObjectPropertyAddress *inAddresses);
     void setupAudioDevicesListener();
-    void setupTargetOutputDevice();
+    void setupTargetOutputDevice(bool forceReconnect = false);
     void initializeOutputDevice();
     void deinitializeOutputDeviceNoLock();
     void deinitializeOutputDevice();
@@ -503,6 +503,7 @@ class ProxyAudioDevice {
                                     UInt32 *outNumberPropertiesChanged,
                                     AudioObjectPropertyAddress outChangedAddresses[2]);
     void monitorUserActivity();
+    bool shouldReconnectStalledOutput(UInt64 hostTime);
     dispatch_queue_t AudioOutputDispatchQueue();
     void ExecuteInAudioOutputThread(void (^block)());
     
@@ -517,6 +518,14 @@ class ProxyAudioDevice {
     AudioDevice outputDevice;
     bool outputDeviceReady = false;
     std::atomic_bool inputIOIsActive;
+    std::atomic<UInt64> inputCallbackCount{0};
+    std::atomic<UInt64> outputCallbackCount{0};
+    // Watchdog observations are protected by outputDeviceMutex, not the audio IO mutex.
+    UInt64 observedInputCallbackCount = 0;
+    UInt64 observedOutputCallbackCount = 0;
+    UInt64 lastInputProgressHostTime = 0;
+    UInt64 stalledOutputSince = 0;
+    UInt64 lastOutputReconnectAttempt = 0;
     Float64 lastInputFrameTime = -1;
     Float64 lastInputBufferFrameSize = -1;
     Float64 inputOutputSampleDelta = 0;
