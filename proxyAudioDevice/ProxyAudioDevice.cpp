@@ -7,6 +7,7 @@
 
 #include "AudioDevice.h"
 #include "AudioRingBuffer.h"
+#include "CAHostTimeBase.h"
 #include "CFTypeHelpers.h"
 #include "debugHelpers.h"
 #include "utilities.h"
@@ -4887,14 +4888,14 @@ void ProxyAudioDevice::matchOutputDeviceSampleRate()
     matchOutputDeviceSampleRateNoLock();
 }
 
-void ProxyAudioDevice::setupTargetOutputDevice() {
+void ProxyAudioDevice::setupTargetOutputDevice(bool forceReconnect) {
     DebugMsg("ProxyAudio: setupTargetOutputDevice");
     AudioDevice newOutputDevice = findTargetOutputAudioDevice();
 
     DebugMsg("ProxyAudio: setupTargetOutputDevice newOutputDevice: %d", newOutputDevice.id);
     CAMutex::Locker locker(outputDeviceMutex);
     
-    if (outputDevice.isValid() && outputDevice.id == newOutputDevice.id
+    if (!forceReconnect && outputDevice.isValid() && outputDevice.id == newOutputDevice.id
         && outputDevice.bufferFrameSize == outputDeviceBufferFrameSize) {
         DebugMsg("ProxyAudio: setupTargetOutputDevice no change in device");
         return;
@@ -4948,6 +4949,10 @@ void ProxyAudioDevice::initializeOutputDevice() {
 
 void ProxyAudioDevice::deinitializeOutputDeviceNoLock() {
     DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock");
+    stalledOutputSince = 0;
+    lastInputProgressHostTime = 0;
+    observedInputCallbackCount = inputCallbackCount.load(std::memory_order_relaxed);
+    observedOutputCallbackCount = outputCallbackCount.load(std::memory_order_relaxed);
     if (outputDevice.isValid()) {
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock stopping device");
         outputDevice.stop();
@@ -4956,6 +4961,17 @@ void ProxyAudioDevice::deinitializeOutputDeviceNoLock() {
 
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock removing IO proc");
         outputDevice.destroyIOProc();
+        for (auto listener : {kAudioDevicePropertyDeviceIsAlive, kAudioDevicePropertyNominalSampleRate}) {
+            AudioObjectPropertyAddress address = {
+                listener, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
+            AudioObjectPropertyListenerProc proc = listener == kAudioDevicePropertyDeviceIsAlive
+                                                      ? outputDeviceAliveListenerStatic
+                                                      : outputDeviceSampleRateListenerStatic;
+            OSStatus err = AudioObjectRemovePropertyListener(outputDevice.id, &address, proc, this);
+            if (err != noErr) {
+                syslog(LOG_WARNING, "ProxyAudio: failed to remove output device listener %u: %d", listener, (int)err);
+            }
+        }
         DebugMsg("ProxyAudio: deinitializeOutputDeviceNoLock invalidating");
         outputDevice.invalidate();
     } else {
@@ -5342,6 +5358,7 @@ OSStatus ProxyAudioDevice::DoIOOperation(AudioServerPlugInDriverRef inDriver,
             lastInputFrameTime = inputSampleTime;
             lastInputBufferFrameSize = inIOBufferFrameSize;
             inputCycleCount += 1;
+            inputCallbackCount.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
@@ -5374,6 +5391,7 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
 #pragma unused(inNow)
 #pragma unused(inInputData)
 #pragma unused(inInputTime)
+    outputCallbackCount.fetch_add(1, std::memory_order_relaxed);
     CAMutex::Locker locker1(IOMutex);
 
     // In theory we don't need a locking mechanism here, because outputDevice will only be modified
@@ -6021,10 +6039,55 @@ void ProxyAudioDevice::notifyHiddenPropertyChanged() {
 #pragma mark Other stuff!
 
 void ProxyAudioDevice::monitorUserActivity() {
+    bool reconnect;
     {
         CAMutex::Locker outputMutexLocker(outputDeviceMutex);
         updateOutputDeviceStartedState();
+        reconnect = shouldReconnectStalledOutput(mach_absolute_time());
     }
+    if (reconnect) {
+        syslog(LOG_WARNING,
+               "ProxyAudio: input is flowing but output callbacks have stalled for at least two seconds; "
+               "reconnecting target output device");
+        setupTargetOutputDevice(true);
+    }
+}
+
+bool ProxyAudioDevice::shouldReconnectStalledOutput(UInt64 hostTime) {
+    // Called with outputDeviceMutex held. Do not take IOMutex: a missing callback must not block monitoring.
+    UInt64 inputCount = inputCallbackCount.load(std::memory_order_relaxed);
+    UInt64 outputCount = outputCallbackCount.load(std::memory_order_relaxed);
+    bool inputAdvanced = inputCount != observedInputCallbackCount;
+    bool outputAdvanced = outputCount != observedOutputCallbackCount;
+    observedInputCallbackCount = inputCount;
+    observedOutputCallbackCount = outputCount;
+    if (inputAdvanced) {
+        lastInputProgressHostTime = hostTime;
+    }
+    bool recentInput = lastInputProgressHostTime != 0 && hostTime >= lastInputProgressHostTime
+                       && hostTime - lastInputProgressHostTime < CAHostTimeBase::ConvertFromNanos(NSEC_PER_SEC);
+
+    if (!outputDevice.isValid() || !outputDeviceReady || !inputIOIsActive || !recentInput || outputAdvanced) {
+        stalledOutputSince = 0;
+        return false;
+    }
+
+    if (stalledOutputSince == 0 || hostTime < stalledOutputSince) {
+        stalledOutputSince = hostTime;
+        return false;
+    }
+
+    if (hostTime - stalledOutputSince < CAHostTimeBase::ConvertFromNanos(2 * NSEC_PER_SEC)) {
+        return false;
+    }
+    if (lastOutputReconnectAttempt != 0 && hostTime >= lastOutputReconnectAttempt
+        && hostTime - lastOutputReconnectAttempt < CAHostTimeBase::ConvertFromNanos(10 * NSEC_PER_SEC)) {
+        return false;
+    }
+
+    lastOutputReconnectAttempt = hostTime;
+    stalledOutputSince = 0;
+    return true;
 }
 
 dispatch_queue_t ProxyAudioDevice::AudioOutputDispatchQueue() {

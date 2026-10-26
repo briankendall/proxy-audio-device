@@ -64,6 +64,17 @@ Clone the repo, open the Xcode project and build the driver and the settings app
 
 If you make the audio buffer too small then the driver will introduce pops, crackles, or distortion. If you notice that then try increasing the buffer size.
 
+If input keeps arriving but the target output stops calling the driver for at least two seconds,
+the driver automatically rebuilds its output connection. This recovers stalled connections after
+display/USB audio engine restarts without switching the macOS output device. Reconnect attempts
+are limited to once every ten seconds and logged as `output callbacks have stalled`. This watchdog
+does not restart idle devices or connections whose output callbacks are still running.
+
+### Wake recovery regression tests
+
+On macOS with Xcode installed, run `bash tests/run-audio-wake-tests.sh`. The tests use simulated
+callback progress; they do not install the driver or change system audio devices.
+
 
 ### Possible Future Work
 
