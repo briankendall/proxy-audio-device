@@ -43,6 +43,7 @@ class AudioDevice {
     AudioObjectID id;
     bool isOutput;
     UInt32 safetyOffset;
+    UInt32 presentationLatency = 0;
     UInt32 bufferFrameSize;
     Float64 sampleRate;
     AudioDeviceIOProcID procId;

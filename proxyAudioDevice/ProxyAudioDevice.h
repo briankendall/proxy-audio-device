@@ -26,7 +26,7 @@ enum {
 #define kBox_UID "ProxyAudioBox_UID"
 #define kDevice_UID "ProxyAudioDevice_UID"
 #define kDevice_ModelUID "ProxyAudioDevice_ModelUID"
-#define kOutputDeviceDefaultBufferFrameSize 512
+#define kOutputDeviceDefaultBufferFrameSize 64
 #define kOutputDeviceMinBufferFrameSize 4
 #define kOutputDeviceDefaultActiveCondition ActiveCondition::userActive
 // Default to false so the proxy device stays visible even when the target is
@@ -49,6 +49,24 @@ enum {
 // A forward jump in a device's IO sample time larger than this (or any backward jump) is treated
 // as the device having established a new time line, e.g. after coreaudiod restarted its IO engine.
 #define kTimelineJumpToleranceFrames 16384.0
+
+// Low-latency alignment (see requiredBackoffFramesNoLock / outputDeviceIOProc).
+// Each target device IO cycle plays the frames the proxy device's own time line schedules for that
+// moment, so the proxy adds no delay of its own, as long as the HAL has already written those
+// frames. How far ahead of "now" the HAL writes is measured on every write; when that lead is too
+// short, playback is held back by just the missing amount plus a jitter margin.
+#define kLatencyJitterMarginFrames 48.0
+#define kLatencyJitterMarginMaxFrames 4096.0
+#define kLatencyStartupExtraMarginFrames 64.0
+// Length of each of the two windows the minimum write lead is tracked over, in frames.
+#define kLatencyStatsWindowFrames 192000.0
+// How fast the alignment set point may move, in frames per frame (the clock servo follows it by
+// trimming the proxy clock rate, so this must stay below kProxyClockMaxCorrection).
+#define kLatencyTargetSlewPerFrame 200e-6
+#define kLatencyTargetDeadbandFrames 4.0
+#define kLatencyUnknownLead 1e300
+#define kWorkBufferFrames 32768
+#define kClickTraceValue 0.9f
 
 class ProxyAudioDevice {
   public:
@@ -107,9 +125,10 @@ class ProxyAudioDevice {
                                 const AudioTimeStamp *inInputTime,
                                 AudioBufferList *outOutputData,
                                 const AudioTimeStamp *inOutputTime);
-    Float64 anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime,
-                                         UInt32 outputBufferFrameSize,
-                                         UInt32 safetyOffset);
+    Float64 anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime, Float64 backoffFrames);
+    Float64 requiredBackoffFramesNoLock(const AudioTimeStamp *now, const AudioTimeStamp *outputTime, UInt32 frames);
+    void logStatistics();
+    void notifyLatencyPropertyChanged();
     void updateProxyClockCorrectionNoLock();
     Float64 proxySampleTimeForHostTimeNoLock(UInt64 hostTime);
     void calculateVolumeFactors(Float32 volumeL,
@@ -543,8 +562,43 @@ class ProxyAudioDevice {
     UInt64 phaseErrorSamples = 0;
     Float64 phaseErrorIntegral = 0.0;
     UInt64 proxyClockPeriodsSinceLog = 0;
+    Float64 lastMeanPhaseError = 0.0;
     ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     bool outputDeviceHideWhenUnavailable = kOutputDeviceDefaultHideWhenUnavailable;
+
+    // Low-latency alignment state, protected by IOMutex.
+    // Smallest observed distance, in frames, between the proxy clock's "now" and the start of the
+    // buffer the HAL was writing at that moment, over the current and the previous window.
+    Float64 writeLeadMinCurrent = kLatencyUnknownLead;
+    Float64 writeLeadMinPrevious = kLatencyUnknownLead;
+    Float64 writeLeadWindowFrames = 0.0;
+    UInt64 writeLeadSamples = 0;
+    Float64 jitterMarginFrames = kLatencyJitterMarginFrames;
+    bool underrunSinceWindowStart = false;
+    Float64 lastRequiredBackoffFrames = 0.0;
+    Float64 lastPresentationLeadFrames = 0.0;
+    UInt32 lastOutputCycleFrames = 0;
+    UInt64 underrunCount = 0;
+    UInt64 reanchorCount = 0;
+    Float32 lastVolumeFactorL = -1.0f;
+    Float32 lastVolumeFactorR = -1.0f;
+    UInt64 statisticsTicks = 0;
+    // Latency measurement aid, protected by IOMutex: when a single sample of exactly kClickTraceValue
+    // passes through (as played by tools/latency-test), where and when it was written and
+    // presented is recorded and later logged by logStatistics().
+    struct ClickTrace {
+        bool isOutput;
+        Float64 label;            // proxy sample time of the click
+        UInt64 hostTime;          // write: when it was written; output: when the target presents it
+        Float64 a, b, c;          // write: proxy now, cycle current time, client buffer; output: phase, output sample time, frames
+    };
+    static const UInt32 kClickTraceCapacity = 32;
+    ClickTrace clickTraces[kClickTraceCapacity];
+    UInt32 clickTraceCount = 0;
+    // Presentation latency of the target device, reported as the proxy device's own latency.
+    std::atomic<UInt32> targetDeviceLatencyFrames{0};
+    // Copy of gDevice_SampleRate the IO threads can read without taking stateMutex.
+    std::atomic<Float64> ioSampleRate{44100.0};
     
     UInt32 gPlugIn_RefCount = 0;
     AudioServerPlugInHostRef gPlugIn_Host = NULL;
@@ -561,9 +615,10 @@ class ProxyAudioDevice {
     bool gStream_Output_IsActive = true;
     const Float32 kVolume_MinDB = -25.0;
     const Float32 kVolume_MaxDB = 0.0;
-    Float32 gVolume_Output_L_Value = 0.0;
-    Float32 gVolume_Output_R_Value = 0.0;
-    bool gMute_Output_Mute = false;
+    // Atomic so the IO thread can read them without taking stateMutex.
+    std::atomic<Float32> gVolume_Output_L_Value{0.0f};
+    std::atomic<Float32> gVolume_Output_R_Value{0.0f};
+    std::atomic<bool> gMute_Output_Mute{false};
     const UInt32 gDevice_BytesPerFrameInChannel = 4;
     const UInt32 gDevice_ChannelsPerFrame = 2;
     const UInt32 gDevice_SafetyOffset = 0;
