@@ -4,6 +4,8 @@
 #include <string>
 #include <dispatch/dispatch.h>
 #include <mach/mach_time.h>
+#include <cmath>
+#include <os/log.h>
 
 #include "AudioDevice.h"
 #include "AudioRingBuffer.h"
@@ -19,21 +21,6 @@ bool contains(const std::vector<T> &v, const T &val) {
 }
 
 std::string CFStringToStdString(CFStringRef s);
-
-std::string CFStringToStdString(CFStringRef s) {
-    if (!s) {
-        return std::string("<null>");
-    }
-    
-    char *buffer;
-    size_t length = CFStringGetLength(s) + 1;
-    buffer = new char[length];
-    CFStringGetCString(s, buffer, length, kCFStringEncodingUTF8);
-    std::string result(buffer);
-    delete buffer;
-    
-    return result;
-}
 
 #pragma mark The Interface
 
@@ -543,7 +530,8 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
     }
 
     //    initialize the box name from the settings
-    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("box acquired"), &theSettingsData);
+    theSettingsData = NULL;
+    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("box name"), &theSettingsData);
     if (theSettingsData != NULL) {
         if (CFGetTypeID(theSettingsData) == CFStringGetTypeID()) {
             boxName = CFStringCreateCopy(NULL, (CFStringRef)theSettingsData);
@@ -731,6 +719,7 @@ OSStatus ProxyAudioDevice::PerformDeviceConfigurationChange(AudioServerPlugInDri
 
         //    change the sample rate
         gDevice_SampleRate = inChangeAction;
+        ioSampleRate = gDevice_SampleRate;
         DebugMsg("ProxyAudio: Setting sample rate to: %llu", inChangeAction);
 
         //    recalculate the state that depends on the sample rate
@@ -2923,7 +2912,9 @@ OSStatus ProxyAudioDevice::GetDevicePropertyData(AudioServerPlugInDriverRef inDr
                            Done,
                            "GetDevicePropertyData: not enough space for the return value of "
                            "kAudioDevicePropertyLatency for the device");
-            *((UInt32 *)outData) = 0;
+            //    The proxy adds no latency of its own (see outputDeviceIOProc), so what a client
+            //    hears is delayed by exactly the target device's presentation latency.
+            *((UInt32 *)outData) = targetDeviceLatencyFrames.load();
             *outDataSize = sizeof(UInt32);
             break;
 
@@ -4911,6 +4902,8 @@ void ProxyAudioDevice::setupTargetOutputDevice() {
         resetInputData();
         outputDevice = newOutputDevice;
         outputDevice.setBufferFrameSize(outputDeviceBufferFrameSize);
+        targetDeviceLatencyFrames = outputDevice.presentationLatency;
+        notifyLatencyPropertyChanged();
         outputDevice.setupIOProc(outputDeviceIOProcStatic, this);
         outputDevice.addPropertyListener(kAudioDevicePropertyDeviceIsAlive,
                                          kAudioObjectPropertyScopeGlobal,
@@ -5010,6 +5003,10 @@ void ProxyAudioDevice::resetInputData() {
     inputOutputSampleDeltaValid = false;
     inputFinalFrameTime = -1;
     expectedOutputSampleTime = -1;
+    writeLeadMinCurrent = kLatencyUnknownLead;
+    writeLeadMinPrevious = kLatencyUnknownLead;
+    writeLeadWindowFrames = 0.0;
+    writeLeadSamples = 0;
 
     {
         CAMutex::Locker servoLocker(&getZeroTimestampMutex);
@@ -5339,6 +5336,62 @@ OSStatus ProxyAudioDevice::DoIOOperation(AudioServerPlugInDriverRef inDriver,
 
             inputBuffer->Store((const Byte *)ioMainBuffer, inIOBufferFrameSize, (SInt64)inputSampleTime);
 
+            // Measure how far ahead of the proxy clock's "now" the HAL is writing. Just before the
+            // next write lands, the newest frame available to the target device's IO proc is the
+            // one right before this buffer's first frame, so this is the lead it can count on.
+            {
+                Float64 lead = kLatencyUnknownLead;
+
+                {
+                    CAMutex::Locker servoLocker(&getZeroTimestampMutex);
+
+                    if (proxyHostTicksPerFrame > 0.0) {
+                        lead = inputSampleTime - proxySampleTimeForHostTimeNoLock(mach_absolute_time());
+                    }
+                }
+
+                if (lead < kLatencyUnknownLead) {
+                    if (lead < writeLeadMinCurrent) {
+                        writeLeadMinCurrent = lead;
+                    }
+
+                    writeLeadSamples += 1;
+                    writeLeadWindowFrames += inIOBufferFrameSize;
+
+                    if (writeLeadWindowFrames >= kLatencyStatsWindowFrames) {
+                        writeLeadMinPrevious = writeLeadMinCurrent;
+                        writeLeadMinCurrent = kLatencyUnknownLead;
+                        writeLeadWindowFrames = 0.0;
+
+                        // Give back margin that was added after an underrun once things have been
+                        // clean for a whole window.
+                        if (!underrunSinceWindowStart && jitterMarginFrames > kLatencyJitterMarginFrames) {
+                            jitterMarginFrames = std::max(kLatencyJitterMarginFrames, jitterMarginFrames - 2.0);
+                        }
+
+                        underrunSinceWindowStart = false;
+                    }
+                }
+            }
+
+            if (clickTraceCount < kClickTraceCapacity) {
+                const Float32 *samples = (const Float32 *)ioMainBuffer;
+
+                for (UInt32 frame = 0; frame < inIOBufferFrameSize; frame++) {
+                    if (samples[frame * gDevice_ChannelsPerFrame] == kClickTraceValue) {
+                        ClickTrace &trace = clickTraces[clickTraceCount++];
+                        trace.isOutput = false;
+                        trace.label = inputSampleTime + frame;
+                        trace.hostTime = mach_absolute_time();
+                        CAMutex::Locker servoLocker(&getZeroTimestampMutex);
+                        trace.a = proxySampleTimeForHostTimeNoLock(trace.hostTime);
+                        trace.b = inIOCycleInfo->mCurrentTime.mSampleTime;
+                        trace.c = inIOBufferFrameSize;
+                        break;
+                    }
+                }
+            }
+
             lastInputFrameTime = inputSampleTime;
             lastInputBufferFrameSize = inIOBufferFrameSize;
             inputCycleCount += 1;
@@ -5371,30 +5424,20 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
                                               AudioBufferList *outOutputData,
                                               const AudioTimeStamp *inOutputTime) {
 #pragma unused(inDevice)
-#pragma unused(inNow)
 #pragma unused(inInputData)
 #pragma unused(inInputTime)
     CAMutex::Locker locker1(IOMutex);
 
     // In theory we don't need a locking mechanism here, because outputDevice will only be modified
-    // while it is not playing.
+    // while it is not playing. The proxy device's own state is read through atomics so that this
+    // realtime thread never waits on stateMutex, which property getters and setters hold.
     Float64 currentOutputDeviceSampleRate = outputDevice.sampleRate;
-    UInt32 currentOutputDeviceBufferFrameSize = outputDevice.bufferFrameSize;
-    UInt32 currentOutputDeviceSafetyOffset = outputDevice.safetyOffset;
-    Float64 currentInputDeviceSampleRate;
-    UInt32 currentInputDeviceChannelCount;
-    Float32 currentVolumeR, currentVolumeL;
-    bool currentMute;
+    Float64 currentInputDeviceSampleRate = ioSampleRate.load(std::memory_order_relaxed);
+    UInt32 currentInputDeviceChannelCount = gDevice_ChannelsPerFrame;
+    Float32 currentVolumeR = gVolume_Output_R_Value.load(std::memory_order_relaxed);
+    Float32 currentVolumeL = gVolume_Output_L_Value.load(std::memory_order_relaxed);
+    bool currentMute = gMute_Output_Mute.load(std::memory_order_relaxed);
 
-    {
-        CAMutex::Locker stateLocker(&stateMutex);
-        currentInputDeviceSampleRate = gDevice_SampleRate;
-        currentInputDeviceChannelCount = gDevice_ChannelsPerFrame;
-        currentVolumeR = gVolume_Output_R_Value;
-        currentVolumeL = gVolume_Output_L_Value;
-        currentMute = gMute_Output_Mute;
-    }
-    
     {
         CAMutex::Locker locker(&getZeroTimestampMutex);
 
@@ -5410,18 +5453,27 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
 
     inputCycleCount = 0;
 
-    // Detect the target device having established a new time line. coreaudiod restarts a device's
-    // IO engine underneath our IO proc without telling us (e.g. HDMI/DisplayPort audio when the
-    // display wakes, USB audio when usbaudiod restarts, sample rate changes made by other
-    // processes), and the sample times we're given then restart from zero. The read position in
-    // the ring buffer is relative to those sample times, so it must be re-anchored.
-    UInt32 framesThisCycle = currentOutputDeviceBufferFrameSize;
+    // The number of frames the HAL actually wants this cycle. This is normally the buffer frame
+    // size we asked for, but it is the HAL's to decide, so everything below goes by what the
+    // buffers say rather than by what we expect.
+    UInt32 framesThisCycle = outputDevice.bufferFrameSize;
 
     if (outOutputData->mNumberBuffers > 0 && outOutputData->mBuffers[0].mNumberChannels > 0) {
         framesThisCycle =
             outOutputData->mBuffers[0].mDataByteSize / (outOutputData->mBuffers[0].mNumberChannels * sizeof(Float32));
     }
 
+    if (framesThisCycle > kWorkBufferFrames) {
+        framesThisCycle = kWorkBufferFrames;
+    }
+
+    lastOutputCycleFrames = framesThisCycle;
+
+    // Detect the target device having established a new time line. coreaudiod restarts a device's
+    // IO engine underneath our IO proc without telling us (e.g. HDMI/DisplayPort audio when the
+    // display wakes, USB audio when usbaudiod restarts, sample rate changes made by other
+    // processes), and the sample times we're given then restart from zero. The read position in
+    // the ring buffer is relative to those sample times, so it must be re-anchored.
     if (expectedOutputSampleTime >= 0) {
         Float64 jump = inOutputTime->mSampleTime - expectedOutputSampleTime;
 
@@ -5446,11 +5498,18 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         return noErr;
     }
 
+    if (!(inOutputTime->mFlags & kAudioTimeStampHostTimeValid)) {
+        // Without a host time there is nothing to align to. The HAL always supplies one.
+        return noErr;
+    }
+
+    // How far playback has to be held back from the proxy device's own schedule for the frames
+    // this cycle needs to have been written already. Normally zero.
+    Float64 requiredBackoff = requiredBackoffFramesNoLock(inNow, inOutputTime, framesThisCycle);
     Float64 startFrame;
 
     if (!inputOutputSampleDeltaValid) {
-        startFrame = anchorInputOutputSampleDelta(
-            inOutputTime, currentOutputDeviceBufferFrameSize, currentOutputDeviceSafetyOffset);
+        startFrame = anchorInputOutputSampleDelta(inOutputTime, requiredBackoff);
     } else {
         startFrame = inOutputTime->mSampleTime + inputOutputSampleDelta;
     }
@@ -5463,22 +5522,68 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         SInt64 fill = inputBuffer->mEndFrame - (SInt64)startFrame;
         SInt64 capacity = (SInt64)inputBuffer->mCapacityFrames;
 
-        // Last resort: if the read position is somehow outside the ring buffer entirely while input
-        // is still flowing, re-anchor rather than play silence forever. With the time line checks
-        // above this should never trigger.
         if (fill > capacity || fill < -capacity) {
+            // Last resort: if the read position is somehow outside the ring buffer entirely while
+            // input is still flowing, re-anchor rather than play silence forever. With the time
+            // line checks above this should never trigger.
             syslog(
                 LOG_WARNING, "ProxyAudio: ring buffer fill level of %lld frames is out of range, re-anchoring", fill);
-            startFrame = anchorInputOutputSampleDelta(
-                inOutputTime, currentOutputDeviceBufferFrameSize, currentOutputDeviceSafetyOffset);
-            fill = inputBuffer->mEndFrame - (SInt64)startFrame;
+            startFrame = anchorInputOutputSampleDelta(inOutputTime, requiredBackoff);
+            reanchorCount += 1;
+        } else if (fill < (SInt64)framesThisCycle) {
+            // Underrun: the HAL has not yet written everything this cycle needs, so part of it
+            // will be silence. Rather than keep clipping the edge of every cycle, widen the jitter
+            // margin and immediately move the read position back by the shortfall plus the margin.
+            Float64 shortfall = (Float64)((SInt64)framesThisCycle - fill);
+            Float64 currentPhase;
+
+            {
+                CAMutex::Locker locker(&getZeroTimestampMutex);
+                currentPhase = proxySampleTimeForHostTimeNoLock(inOutputTime->mHostTime) - startFrame;
+            }
+
+            underrunCount += 1;
+            underrunSinceWindowStart = true;
+            jitterMarginFrames = std::min(kLatencyJitterMarginMaxFrames, jitterMarginFrames * 1.5 + 16.0);
+            requiredBackoff = std::max(requiredBackoffFramesNoLock(inNow, inOutputTime, framesThisCycle),
+                                       currentPhase + shortfall + jitterMarginFrames);
+            startFrame = anchorInputOutputSampleDelta(inOutputTime, requiredBackoff);
+            reanchorCount += 1;
+
+            // Since this could conceivably happen often, only log it once every five seconds at most
+            static time_t lastUnderrunWarning = 0;
+            time_t seconds;
+            time(&seconds);
+
+            if ((seconds - lastUnderrunWarning) > 5) {
+                lastUnderrunWarning = seconds;
+                syslog(LOG_WARNING,
+                       "ProxyAudio: underrun of %.0f frames, holding playback back %.0f frames (margin now %.0f)",
+                       shortfall,
+                       requiredBackoff,
+                       jitterMarginFrames);
+            }
         }
 
-        // Feed the phase error between the proxy clock and the target device's clock to the proxy
-        // clock servo (consumed in GetZeroTimeStamp).
-        if (inOutputTime->mFlags & kAudioTimeStampHostTimeValid) {
+        {
             CAMutex::Locker locker(&getZeroTimestampMutex);
 
+            // Move the clock servo's set point towards the alignment we want. The servo follows by
+            // trimming the proxy clock's rate by a few hundred parts per million at most, so the
+            // delay shrinks (or grows) smoothly, without dropping or repeating any audio. A set
+            // point that is too optimistic by more than the jitter margin can't wait for that.
+            Float64 difference = requiredBackoff - phaseFramesAtAnchor;
+
+            if (difference > jitterMarginFrames) {
+                phaseFramesAtAnchor = requiredBackoff;
+                inputOutputSampleDeltaValid = false;
+            } else if (std::fabs(difference) > kLatencyTargetDeadbandFrames) {
+                Float64 step = ((Float64)framesThisCycle) * kLatencyTargetSlewPerFrame;
+                phaseFramesAtAnchor += std::max(-step, std::min(step, difference));
+            }
+
+            // Feed the phase error between the proxy clock and the target device's clock to the
+            // proxy clock servo (consumed in GetZeroTimeStamp).
             if (phaseErrorSamples < 10000) {
                 Float64 phaseFrames = proxySampleTimeForHostTimeNoLock(inOutputTime->mHostTime) - startFrame;
                 phaseErrorAccumulated += phaseFrames - phaseFramesAtAnchor;
@@ -5487,40 +5592,56 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         }
     }
 
-    bool overrun = inputBuffer->Fetch(workBuffer, currentOutputDeviceBufferFrameSize, (SInt64)startFrame);
+    inputBuffer->Fetch(workBuffer, framesThisCycle, (SInt64)startFrame);
 
-    if (overrun && inputFinalFrameTime == -1 && startFrame >= inputBuffer->mStartFrame) {
-        // Since this warning could conceivably happen every cycle, explicitly make it
-        // only appear once every five seconds at most
-        static time_t lastBufferOverrunWarning = 0;
-        time_t seconds;
-        time(&seconds);
-        
-        if ((seconds - lastBufferOverrunWarning) > 5) {
-            lastBufferOverrunWarning = seconds;
-            syslog(LOG_WARNING, "ProxyAudio: output unexpected overrun");
-            syslog(LOG_WARNING, "ProxyAudio: output frame: %lf", startFrame);
-            syslog(LOG_WARNING,
-                   "ProxyAudio: output buffer start: %llu    end: %llu",
-                   inputBuffer->mStartFrame,
-                   inputBuffer->mEndFrame);
+    if (clickTraceCount < kClickTraceCapacity) {
+        const Float32 *samples = (const Float32 *)workBuffer;
+
+        for (UInt32 frame = 0; frame < framesThisCycle; frame++) {
+            if (samples[frame * currentInputDeviceChannelCount] == kClickTraceValue) {
+                ClickTrace &trace = clickTraces[clickTraceCount++];
+                CAMutex::Locker locker(&getZeroTimestampMutex);
+                trace.isOutput = true;
+                trace.label = std::floor(startFrame) + frame;
+                trace.hostTime = inOutputTime->mHostTime + (UInt64)(((Float64)frame) * proxyHostTicksPerFrame);
+                trace.a = proxySampleTimeForHostTimeNoLock(inOutputTime->mHostTime) - startFrame;
+                trace.b = inOutputTime->mSampleTime;
+                trace.c = framesThisCycle;
+                break;
+            }
         }
     }
-    
+
+    // Ramp from the gain used last cycle to the current one, so volume changes don't click.
     Float32 volumeFactorL = 1.0, volumeFactorR = 1.0;
     calculateVolumeFactors(currentVolumeL, currentVolumeR, currentMute, volumeFactorL, volumeFactorR);
+    Float32 previousFactorL = (lastVolumeFactorL < 0.0f) ? volumeFactorL : lastVolumeFactorL;
+    Float32 previousFactorR = (lastVolumeFactorR < 0.0f) ? volumeFactorR : lastVolumeFactorR;
+    lastVolumeFactorL = volumeFactorL;
+    lastVolumeFactorR = volumeFactorR;
 
     for (UInt32 bufferIndex = 0; bufferIndex < outOutputData->mNumberBuffers; bufferIndex++) {
         UInt32 outputChannelCount = outOutputData->mBuffers[bufferIndex].mNumberChannels;
+
+        if (outputChannelCount == 0 || outOutputData->mBuffers[bufferIndex].mData == NULL) {
+            continue;
+        }
+
+        UInt32 bufferFrames = outOutputData->mBuffers[bufferIndex].mDataByteSize
+                              / (outputChannelCount * (UInt32)sizeof(Float32));
+        UInt32 framesToProcess = std::min(bufferFrames, framesThisCycle);
         UInt32 numChannelsToProcess = std::min(outputChannelCount, currentInputDeviceChannelCount);
 
         for (UInt32 channelIndex = 0; channelIndex < numChannelsToProcess; channelIndex++) {
-            Float32 *in = (Float32 *)workBuffer + channelIndex;
+            const Float32 *in = (const Float32 *)workBuffer + channelIndex;
             Float32 *out = (Float32 *)outOutputData->mBuffers[bufferIndex].mData + channelIndex;
-            long framesize = outputChannelCount * sizeof(Float32);
+            Float32 gain = (channelIndex == 0) ? previousFactorL : previousFactorR;
+            Float32 gainEnd = (channelIndex == 0) ? volumeFactorL : volumeFactorR;
+            Float32 gainStep = (framesToProcess > 0) ? ((gainEnd - gain) / (Float32)framesToProcess) : 0.0f;
 
-            for (UInt32 frame = 0; frame < outOutputData->mBuffers[bufferIndex].mDataByteSize; frame += framesize) {
-                *out += (*in * ((channelIndex == 0) ? volumeFactorL : volumeFactorR));
+            for (UInt32 frame = 0; frame < framesToProcess; frame++) {
+                *out += (*in * gain);
+                gain += gainStep;
                 in += currentInputDeviceChannelCount;
                 out += outputChannelCount;
             }
@@ -5530,28 +5651,84 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
     return noErr;
 }
 
-Float64 ProxyAudioDevice::anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime,
-                                                       UInt32 outputBufferFrameSize,
-                                                       UInt32 safetyOffset) {
-    // Must be called with IOMutex held. Positions the read position the usual distance behind the
-    // newest input data and makes that the fill level the proxy clock servo will try to hold.
-    Float64 startFrame =
-        lastInputFrameTime - lastInputBufferFrameSize - (Float64)outputBufferFrameSize - (Float64)safetyOffset;
-    inputOutputSampleDelta = startFrame - outputTime->mSampleTime;
-    inputOutputSampleDeltaValid = true;
+Float64 ProxyAudioDevice::requiredBackoffFramesNoLock(const AudioTimeStamp *now,
+                                                      const AudioTimeStamp *outputTime,
+                                                      UInt32 frames) {
+    // Must be called with IOMutex held. Returns how many frames behind the proxy device's own
+    // schedule the target device has to play for the frames it needs to be in the ring buffer.
+    //
+    // This cycle will be presented by the target device at outputTime's host time, and has to be
+    // read now. The proxy device's schedule puts frame P = proxyTime(outputTime) there. The HAL
+    // has reliably written everything up to proxyTime(now) + lead, where lead is the smallest
+    // write lead seen recently. Reading [P - backoff, P - backoff + frames) is therefore safe when
+    //     P - backoff + frames + margin <= proxyTime(now) + lead
+    // and P - proxyTime(now) is the target device's presentation lead (its IO buffer plus safety
+    // offset). With typical client buffer sizes the lead is larger than everything on the left and
+    // the backoff is zero: the proxy adds no delay at all.
+    Float64 leadMin = std::min(writeLeadMinCurrent, writeLeadMinPrevious);
+
+    if (leadMin >= kLatencyUnknownLead) {
+        // Nothing measured yet. Data up to the proxy clock's "now" is what the HAL guarantees.
+        leadMin = 0.0;
+    }
+
+    Float64 presentationLead;
 
     {
         CAMutex::Locker locker(&getZeroTimestampMutex);
-        phaseFramesAtAnchor = proxySampleTimeForHostTimeNoLock(outputTime->mHostTime) - startFrame;
+
+        if (proxyHostTicksPerFrame <= 0.0) {
+            return 0.0;
+        }
+
+        // Go by the cycle's nominal start rather than by when this thread actually got to run:
+        // the alignment chosen here has to hold for cycles that wake up exactly on time too.
+        UInt64 nowHostTime =
+            (now && (now->mFlags & kAudioTimeStampHostTimeValid)) ? now->mHostTime : mach_absolute_time();
+        presentationLead = ((Float64)((SInt64)(outputTime->mHostTime - nowHostTime))) / proxyHostTicksPerFrame;
+    }
+
+    Float64 margin = jitterMarginFrames + ((writeLeadSamples < 16) ? kLatencyStartupExtraMarginFrames : 0.0);
+    Float64 backoff = presentationLead + (Float64)frames + margin - leadMin;
+    Float64 maxBackoff = ((Float64)inputBuffer->mCapacityFrames) / 2.0;
+
+    if (backoff < 0.0) {
+        backoff = 0.0;
+    } else if (backoff > maxBackoff) {
+        backoff = maxBackoff;
+    }
+
+    lastPresentationLeadFrames = presentationLead;
+    lastRequiredBackoffFrames = backoff;
+
+    return backoff;
+}
+
+Float64 ProxyAudioDevice::anchorInputOutputSampleDelta(const AudioTimeStamp *outputTime, Float64 backoffFrames) {
+    // Must be called with IOMutex held. Positions the read position backoffFrames behind the frame
+    // the proxy device's own time line schedules for the moment the target device will present
+    // this cycle, and makes that the phase the proxy clock servo will hold.
+    Float64 startFrame;
+    Float64 phase;
+
+    {
+        CAMutex::Locker locker(&getZeroTimestampMutex);
+        Float64 proxyTimeAtOutput = proxySampleTimeForHostTimeNoLock(outputTime->mHostTime);
+        startFrame = std::floor(proxyTimeAtOutput - backoffFrames);
+        phase = proxyTimeAtOutput - startFrame;
+        phaseFramesAtAnchor = phase;
         phaseErrorAccumulated = 0.0;
         phaseErrorSamples = 0;
         phaseErrorIntegral = 0.0;
     }
 
+    inputOutputSampleDelta = startFrame - outputTime->mSampleTime;
+    inputOutputSampleDeltaValid = true;
+
     DebugMsg("ProxyAudio: anchored inputOutputSampleDelta at %.0f, fill level %lld frames, phase %.1f frames",
              inputOutputSampleDelta,
              inputBuffer->mEndFrame - (SInt64)startFrame,
-             phaseFramesAtAnchor);
+             phase);
 
     return startFrame;
 }
@@ -5581,6 +5758,7 @@ void ProxyAudioDevice::updateProxyClockCorrectionNoLock() {
 
     if (phaseErrorSamples > 0) {
         meanPhaseError = phaseErrorAccumulated / (Float64)phaseErrorSamples;
+        lastMeanPhaseError = meanPhaseError;
         phaseErrorAccumulated = 0.0;
         phaseErrorSamples = 0;
 
@@ -6009,6 +6187,15 @@ void ProxyAudioDevice::setOutputDeviceHideWhenUnavailable(bool newHideWhenUnavai
 // setting or having the target device come and go is picked up immediately.
 // With the setting off the getter always returns 0, so the notification is
 // harmless (the host just sees the same value it already had).
+void ProxyAudioDevice::notifyLatencyPropertyChanged() {
+    ExecuteInAudioOutputThread(^() {
+        AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyLatency,
+                                                 kAudioObjectPropertyScopeOutput,
+                                                 kAudioObjectPropertyElementMaster};
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Device, 1, &theAddress);
+    });
+}
+
 void ProxyAudioDevice::notifyHiddenPropertyChanged() {
     ExecuteInAudioOutputThread(^() {
         AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyIsHidden,
@@ -6025,6 +6212,89 @@ void ProxyAudioDevice::monitorUserActivity() {
         CAMutex::Locker outputMutexLocker(outputDeviceMutex);
         updateOutputDeviceStartedState();
     }
+
+    logStatistics();
+}
+
+void ProxyAudioDevice::logStatistics() {
+    {
+        ClickTrace traces[kClickTraceCapacity];
+        UInt32 count;
+
+        {
+            CAMutex::Locker locker(&IOMutex);
+            count = clickTraceCount;
+            memcpy(traces, clickTraces, sizeof(ClickTrace) * count);
+            clickTraceCount = 0;
+        }
+
+        for (UInt32 i = 0; i < count; i++) {
+            if (traces[i].isOutput) {
+                os_log(OS_LOG_DEFAULT,
+                       "ProxyAudio: click presented: label %.0f host %llu phase %.2f targetSample %.0f frames %.0f",
+                       traces[i].label, traces[i].hostTime, traces[i].a, traces[i].b, traces[i].c);
+            } else {
+                os_log(OS_LOG_DEFAULT,
+                       "ProxyAudio: click written: label %.0f host %llu proxyNow %.2f cycleNow %.0f clientBuffer %.0f",
+                       traces[i].label, traces[i].hostTime, traces[i].a, traces[i].b, traces[i].c);
+            }
+        }
+    }
+
+    // Called every 500 ms. While audio is flowing, log the alignment statistics every 15 seconds
+    // for the first ten minutes after the driver loads and every ten minutes after that.
+    statisticsTicks += 1;
+    UInt64 interval = (statisticsTicks < 1200) ? 30 : 1200;
+
+    if ((statisticsTicks % interval) != 0 || !inputIOIsActive) {
+        return;
+    }
+
+    Float64 leadMin, margin, required, presentationLead, inputFrames, setPoint, meanPhaseError, correction;
+    UInt32 outputFrames;
+    UInt64 underruns, reanchors;
+
+    {
+        CAMutex::Locker locker(&IOMutex);
+        leadMin = std::min(writeLeadMinCurrent, writeLeadMinPrevious);
+        margin = jitterMarginFrames;
+        required = lastRequiredBackoffFrames;
+        presentationLead = lastPresentationLeadFrames;
+        inputFrames = lastInputBufferFrameSize;
+        outputFrames = lastOutputCycleFrames;
+        underruns = underrunCount;
+        reanchors = reanchorCount;
+
+        CAMutex::Locker servoLocker(&getZeroTimestampMutex);
+        setPoint = phaseFramesAtAnchor;
+        meanPhaseError = lastMeanPhaseError;
+        correction = (proxyClockCorrection - 1.0) * 1e6;
+    }
+
+    if (leadMin >= kLatencyUnknownLead) {
+        leadMin = -1.0;
+    }
+
+    Float64 rate = ioSampleRate.load();
+
+    os_log(OS_LOG_DEFAULT,
+           "ProxyAudio: stats: added delay %.1f frames (%.2f ms), needed %.1f, phase error %.1f, write lead min %.0f, "
+           "client buffer %.0f, output buffer %u, output presentation lead %.0f, margin %.0f, underruns %llu, "
+           "re-anchors %llu, clock trim %+.1f ppm, target latency %u frames, rate %.0f",
+           setPoint,
+           (rate > 0.0) ? (setPoint / rate * 1000.0) : 0.0,
+           required,
+           meanPhaseError,
+           leadMin,
+           inputFrames,
+           outputFrames,
+           presentationLead,
+           margin,
+           underruns,
+           reanchors,
+           correction,
+           targetDeviceLatencyFrames.load(),
+           rate);
 }
 
 dispatch_queue_t ProxyAudioDevice::AudioOutputDispatchQueue() {

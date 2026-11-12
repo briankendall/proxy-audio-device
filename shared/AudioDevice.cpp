@@ -68,6 +68,36 @@ OSStatus AudioDevice::updateStreamInfo() {
         return err;
     }
 
+    // Presentation latency: the device's own latency plus that of its first stream. Best effort;
+    // devices that don't report one are treated as having none.
+    AudioObjectPropertyScope scope = isOutput ? kAudioObjectPropertyScopeOutput : kAudioObjectPropertyScopeInput;
+    UInt32 latency = 0;
+    UInt32 value = 0;
+    UInt32 size = sizeof(value);
+    AudioObjectPropertyAddress latencyAddress = {kAudioDevicePropertyLatency, scope, kAudioObjectPropertyElementMaster};
+
+    if (AudioObjectGetPropertyData(id, &latencyAddress, 0, NULL, &size, &value) == noErr) {
+        latency += value;
+    }
+
+    AudioStreamID streams[16];
+    size = sizeof(streams);
+    AudioObjectPropertyAddress streamsAddress = {kAudioDevicePropertyStreams, scope, kAudioObjectPropertyElementMaster};
+
+    if (AudioObjectGetPropertyData(id, &streamsAddress, 0, NULL, &size, streams) == noErr
+        && size >= sizeof(AudioStreamID)) {
+        AudioObjectPropertyAddress streamLatencyAddress = {
+            kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
+        value = 0;
+        size = sizeof(value);
+
+        if (AudioObjectGetPropertyData(streams[0], &streamLatencyAddress, 0, NULL, &size, &value) == noErr) {
+            latency += value;
+        }
+    }
+
+    presentationLatency = latency;
+
     return noErr;
 }
 

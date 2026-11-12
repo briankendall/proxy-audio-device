@@ -41,6 +41,16 @@ Run the _Proxy Audio Device Settings_ app to configure your new audio device.
 
 6. Run Proxy Audio Device Settings to configure the proxy output device's name, which output device the driver will proxy to, and how large you want its audio buffer to be.
 
+### Latency
+
+Each IO cycle of the target device plays the frames that the proxy device's own time line schedules for that moment, so audio comes out when the application's time stamps say it will: the proxy adds no delay of its own. That is possible whenever the application's IO buffer is comfortably larger than twice the proxy's output buffer (the default output buffer is 64 frames; typical applications use 512). When it is not, playback is held back by just the missing amount, and the delay shrinks again without glitches once it can.
+
+While audio is playing the driver periodically logs its alignment statistics (added delay, underruns, clock trim):
+
+    /usr/bin/log show --last 5m --predicate 'eventMessage CONTAINS "ProxyAudio: stats"'
+
+`tools/latency-test.swift` measures the added delay directly, and `tools/proxyctl.swift` reads and writes the driver's settings from the command line.
+
 ### Uninstallation
 
 1. Open a terminal window and execute the following command:
