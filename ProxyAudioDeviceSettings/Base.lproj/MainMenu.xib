@@ -350,12 +350,12 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" texturedBackground="YES"/>
             <windowCollectionBehavior key="collectionBehavior" fullScreenNone="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
-            <rect key="contentRect" x="335" y="390" width="511" height="366"/>
+            <rect key="contentRect" x="335" y="390" width="511" height="384"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1417"/>
-            <value key="minSize" type="size" width="280" height="366"/>
-            <value key="maxSize" type="size" width="9999" height="366"/>
+            <value key="minSize" type="size" width="280" height="384"/>
+            <value key="maxSize" type="size" width="9999" height="384"/>
             <view key="contentView" wantsLayer="YES" id="EiT-Mj-1SZ">
-                <rect key="frame" x="0.0" y="0.0" width="511" height="366"/>
+                <rect key="frame" x="0.0" y="0.0" width="511" height="384"/>
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="K1W-uM-L8Q">
@@ -377,7 +377,7 @@
                         </textFieldCell>
                     </textField>
                     <textField verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Vuz-aO-zYY">
-                        <rect key="frame" x="158" y="324" width="333" height="22"/>
+                        <rect key="frame" x="158" y="342" width="333" height="22"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="cHH-7S-0Po">
                             <font key="font" metaFont="system"/>
@@ -433,7 +433,7 @@
                         </textFieldCell>
                     </textField>
                     <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="HsD-M9-H9y">
-                        <rect key="frame" x="10" y="327" width="142" height="16"/>
+                        <rect key="frame" x="10" y="345" width="142" height="16"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <textFieldCell key="cell" lineBreakMode="clipping" alignment="right" title="Proxy device name:" id="pmH-ny-HEp">
                             <font key="font" usesAppearanceFont="YES"/>
@@ -502,7 +502,7 @@
                         </connections>
                     </button>
                     <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="icn-01-lbl">
-                        <rect key="frame" x="10" y="295" width="142" height="16"/>
+                        <rect key="frame" x="10" y="313" width="142" height="16"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <textFieldCell key="cell" lineBreakMode="clipping" alignment="right" title="Icon:" id="icn-01-lcl">
                             <font key="font" usesAppearanceFont="YES"/>
@@ -510,8 +510,17 @@
                             <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                         </textFieldCell>
                     </textField>
+                    <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="icn-01-not">
+                        <rect key="frame" x="156" y="288" width="337" height="14"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
+                        <textFieldCell key="cell" lineBreakMode="truncatingTail" selectable="YES" title="To refresh the icon, run “killall ControlCenter” in Terminal." id="icn-01-ncl">
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="secondaryLabelColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
                     <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="icn-01-pop">
-                        <rect key="frame" x="155" y="288" width="209" height="25"/>
+                        <rect key="frame" x="155" y="306" width="209" height="25"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <popUpButtonCell key="cell" type="push" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" id="icn-01-cel">
                             <behavior key="behavior" lightByBackground="YES" lightByGray="YES"/>

@@ -21,6 +21,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (IBAction)alwaysConditionSelected:(id)sender;
 - (IBAction)hideWhenUnavailableToggled:(id)sender;
 - (IBAction)deviceIconSelected:(id)sender;
+- (IBAction)equalizerChanged:(id)sender;
+- (IBAction)equalizerFlatPressed:(id)sender;
 
 @end
 

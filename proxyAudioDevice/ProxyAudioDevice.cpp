@@ -571,7 +571,8 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
     outputDeviceBufferFrameSize = retrieveOutputDeviceBufferFrameSizeFromStorage();
     outputDeviceActiveCondition = retrieveOutputDeviceActiveConditionFromStorage();
     outputDeviceHideWhenUnavailable = retrieveOutputDeviceHideWhenUnavailableFromStorage();
-    deviceTransportType = retrieveDeviceTransportTypeFromStorage();
+    deviceIcon = retrieveDeviceIconFromStorage();
+    equalizerSettings = retrieveEqualizerSettingsFromStorage();
 
     //    calculate the host ticks per frame
     struct mach_timebase_info theTimeBaseInfo;
@@ -2045,7 +2046,7 @@ OSStatus ProxyAudioDevice::GetBoxPropertyData(AudioServerPlugInDriverRef inDrive
                            Done,
                            "GetBoxPropertyData: not enough space for the return value of "
                            "kAudioDevicePropertyTransportType for the box");
-            *((UInt32 *)outData) = deviceTransportType;
+            *((UInt32 *)outData) = transportTypeForIcon(deviceIcon);
             *outDataSize = sizeof(UInt32);
             break;
 
@@ -2812,7 +2813,7 @@ OSStatus ProxyAudioDevice::GetDevicePropertyData(AudioServerPlugInDriverRef inDr
                            Done,
                            "GetDevicePropertyData: not enough space for the return value of "
                            "kAudioDevicePropertyTransportType for the device");
-            *((UInt32 *)outData) = deviceTransportType;
+            *((UInt32 *)outData) = transportTypeForIcon(deviceIcon);
             *outDataSize = sizeof(UInt32);
             break;
 
@@ -5394,6 +5395,13 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         currentVolumeR = gVolume_Output_R_Value;
         currentVolumeL = gVolume_Output_L_Value;
         currentMute = gMute_Output_Mute;
+
+        if (equalizerSettingsGeneration != equalizerAppliedGeneration
+            || currentOutputDeviceSampleRate != equalizerAppliedSampleRate) {
+            equalizer.configure(equalizerSettings, currentOutputDeviceSampleRate);
+            equalizerAppliedGeneration = equalizerSettingsGeneration;
+            equalizerAppliedSampleRate = currentOutputDeviceSampleRate;
+        }
     }
     
     {
@@ -5508,6 +5516,18 @@ OSStatus ProxyAudioDevice::outputDeviceIOProc(AudioDeviceID inDevice,
         }
     }
     
+    {
+        // Filter state carries over between cycles, so start clean after any gap or jump.
+        UInt32 equalizerFrameCount = std::min(framesThisCycle, currentOutputDeviceBufferFrameSize);
+
+        if ((SInt64)startFrame != equalizerNextFrame) {
+            equalizer.reset();
+        }
+
+        equalizer.process((Float32 *)workBuffer, equalizerFrameCount, currentInputDeviceChannelCount);
+        equalizerNextFrame = (SInt64)startFrame + equalizerFrameCount;
+    }
+
     Float32 volumeFactorL = 1.0, volumeFactorR = 1.0;
     calculateVolumeFactors(currentVolumeL, currentVolumeR, currentMute, volumeFactorL, volumeFactorR);
 
@@ -5689,8 +5709,10 @@ void ProxyAudioDevice::parseConfigurationString(CFStringRef configString, Config
         action = ConfigType::deviceActiveCondition;
     } else if (CFStringCompare(actionString, CFSTR("outputDeviceHideWhenUnavailable"), 0) == kCFCompareEqualTo) {
         action = ConfigType::deviceHideWhenUnavailable;
-    } else if (CFStringCompare(actionString, CFSTR("deviceTransportType"), 0) == kCFCompareEqualTo) {
-        action = ConfigType::deviceTransportType;
+    } else if (CFStringCompare(actionString, CFSTR("deviceIcon"), 0) == kCFCompareEqualTo) {
+        action = ConfigType::deviceIcon;
+    } else if (CFStringCompare(actionString, CFSTR("equalizer"), 0) == kCFCompareEqualTo) {
+        action = ConfigType::equalizer;
     } else {
         return;
     }
@@ -5731,9 +5753,12 @@ void ProxyAudioDevice::setConfigurationValue(ConfigType type, CFStringRef value)
             setOutputDeviceHideWhenUnavailable(CFStringGetIntValue(value) != 0);
             break;
 
-        case ConfigType::deviceTransportType:
-            // Configurator passes the four char code as a decimal number.
-            setDeviceTransportType((UInt32)CFStringGetIntValue(value));
+        case ConfigType::deviceIcon:
+            setDeviceIcon((DeviceIcon)CFStringGetIntValue(value));
+            break;
+
+        case ConfigType::equalizer:
+            setEqualizerSettings(value);
             break;
 
         default:
@@ -5760,8 +5785,11 @@ CFStringRef ProxyAudioDevice::copyConfigurationValue(ConfigType type) {
         case ConfigType::deviceHideWhenUnavailable:
             return CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), outputDeviceHideWhenUnavailable ? 1 : 0);
 
-        case ConfigType::deviceTransportType:
-            return CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), (unsigned int)deviceTransportType);
+        case ConfigType::deviceIcon:
+            return CFStringCreateWithFormat(NULL, NULL, CFSTR("%d"), (int)deviceIcon);
+
+        case ConfigType::equalizer:
+            return EqualizerSettingsCopyString(equalizerSettings);
 
         default:
             return nullptr;
@@ -6015,70 +6043,120 @@ void ProxyAudioDevice::setOutputDeviceHideWhenUnavailable(bool newHideWhenUnavai
     notifyHiddenPropertyChanged();
 }
 
-bool ProxyAudioDevice::isSupportedTransportType(UInt32 transportType) {
-    switch (transportType) {
-        case kAudioDeviceTransportTypeVirtual:
-        case kAudioDeviceTransportTypeBuiltIn:
-        case kAudioDeviceTransportTypeUSB:
-        case kAudioDeviceTransportTypeBluetooth:
-        case kAudioDeviceTransportTypeHDMI:
-        case kAudioDeviceTransportTypeDisplayPort:
-        case kAudioDeviceTransportTypeAirPlay:
-        case kAudioDeviceTransportTypeThunderbolt:
-            return true;
-
+// Control Center picks the glyph from the transport type. Verified: built-in
+// gives the laptop, HDMI the TV, and virtual, USB and Thunderbolt all give the
+// generic volume glyph. Never report Bluetooth: Control Center and System
+// Settings then hide the device entirely, presumably because the Bluetooth
+// stack doesn't know it.
+UInt32 ProxyAudioDevice::transportTypeForIcon(DeviceIcon icon) {
+    switch (icon) {
+        case DeviceIcon::laptop:
+            return kAudioDeviceTransportTypeBuiltIn;
+        case DeviceIcon::tv:
+            return kAudioDeviceTransportTypeHDMI;
+        case DeviceIcon::standard:
         default:
-            return false;
+            return kAudioDeviceTransportTypeVirtual;
     }
 }
 
-UInt32 ProxyAudioDevice::retrieveDeviceTransportTypeFromStorage() {
-    DebugMsg("ProxyAudio: retrieveDeviceTransportTypeFromStorage");
+DeviceIcon ProxyAudioDevice::retrieveDeviceIconFromStorage() {
+    DebugMsg("ProxyAudio: retrieveDeviceIconFromStorage");
 
     if (!gPlugIn_Host) {
-        DebugMsg("ProxyAudio: retrieveDeviceTransportTypeFromStorage no plugin host");
-        return kDeviceDefaultTransportType;
+        return kDeviceDefaultIcon;
     }
 
     CFPropertyListSmartRef data;
-    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("deviceTransportType"), &data);
+    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("deviceIcon"), &data);
 
     if (data == NULL || CFGetTypeID(data) != CFNumberGetTypeID()) {
-        DebugMsg("ProxyAudio: retrieveDeviceTransportTypeFromStorage finished returning default value");
-        return kDeviceDefaultTransportType;
+        return kDeviceDefaultIcon;
     }
 
-    SInt64 value;
-    CFNumberGetValue(CFNumberRef(CFPropertyListRef(data)), kCFNumberSInt64Type, &value);
+    SInt32 value;
+    CFNumberGetValue(CFNumberRef(CFPropertyListRef(data)), kCFNumberSInt32Type, &value);
 
-    if (!isSupportedTransportType((UInt32)value)) {
-        return kDeviceDefaultTransportType;
+    if (!isValidDeviceIcon(value)) {
+        return kDeviceDefaultIcon;
     }
 
-    return (UInt32)value;
+    return DeviceIcon(value);
 }
 
-void ProxyAudioDevice::setDeviceTransportType(UInt32 newTransportType) {
-    if (!isSupportedTransportType(newTransportType)) {
+void ProxyAudioDevice::setDeviceIcon(DeviceIcon newIcon) {
+    if (!isValidDeviceIcon((SInt64)newIcon)) {
         return;
     }
 
     {
         CAMutex::Locker locker(&stateMutex);
-        deviceTransportType = newTransportType;
-        SInt64 value = newTransportType;
-        CFNumberSmartRef valueRef = CFNumberCreate(NULL, kCFNumberSInt64Type, &value);
-        gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("deviceTransportType"), valueRef);
+        deviceIcon = newIcon;
+        SInt32 value = (SInt32)newIcon;
+        CFNumberSmartRef valueRef = CFNumberCreate(NULL, kCFNumberSInt32Type, &value);
+        gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("deviceIcon"), valueRef);
     }
 
-    // Box and device share the 'tran' selector. Notify both so Control Center
-    // and the Sound menu redraw the glyph without a coreaudiod restart.
+    // Box and device share the 'tran' selector. Notify both so clients that
+    // listen re-read it without a coreaudiod restart.
     ExecuteInAudioOutputThread(^() {
         AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyTransportType,
                                                  kAudioObjectPropertyScopeGlobal,
                                                  kAudioObjectPropertyElementMaster};
         gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Device, 1, &theAddress);
         gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Box, 1, &theAddress);
+    });
+}
+
+EqualizerSettings ProxyAudioDevice::retrieveEqualizerSettingsFromStorage() {
+    DebugMsg("ProxyAudio: retrieveEqualizerSettingsFromStorage");
+    EqualizerSettings settings;
+
+    if (!gPlugIn_Host) {
+        return settings;
+    }
+
+    CFPropertyListSmartRef data;
+    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("equalizer"), &data);
+
+    if (data != NULL && CFGetTypeID(data) == CFStringGetTypeID()) {
+        EqualizerSettingsFromString(CFStringRef(CFPropertyListRef(data)), settings);
+    }
+
+    return settings;
+}
+
+void ProxyAudioDevice::setEqualizerSettings(CFStringRef settingsString) {
+    EqualizerSettings newSettings;
+
+    if (!gPlugIn_Host || !EqualizerSettingsFromString(settingsString, newSettings)) {
+        return;
+    }
+
+    UInt64 generation;
+
+    {
+        CAMutex::Locker locker(&stateMutex);
+
+        if (newSettings == equalizerSettings) {
+            return;
+        }
+
+        equalizerSettings = newSettings;
+        generation = ++equalizerSettingsGeneration;
+    }
+
+    // Slider drags send a stream of changes. They're heard immediately, but only
+    // the last one in a burst is written to storage.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), AudioOutputDispatchQueue(), ^{
+        CAMutex::Locker locker(&stateMutex);
+
+        if (generation != equalizerSettingsGeneration) {
+            return;
+        }
+
+        CFStringSmartRef stored = EqualizerSettingsCopyString(equalizerSettings);
+        gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("equalizer"), stored);
     });
 }
 
