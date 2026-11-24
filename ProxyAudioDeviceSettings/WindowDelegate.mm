@@ -9,9 +9,17 @@ int onDevicesChanged(AudioObjectID inObjectID,
                      const AudioObjectPropertyAddress *inAddresses,
                      void *inClientData);
 
+// Height added to the bottom of the window for the equalizer section.
+static const CGFloat kEqualizerSectionHeight = 230;
+
 @implementation WindowDelegate {
     std::vector<AudioDeviceID> currentDeviceList;
     int initializationAttemptInterval;
+    NSButton *equalizerEnabledCheckbox;
+    NSButton *equalizerFlatButton;
+    // Index 0 is the preamp, then one per band.
+    NSMutableArray<NSSlider *> *equalizerSliders;
+    NSMutableArray<NSTextField *> *equalizerValueLabels;
 }
 
 - (void)awakeFromNib {
@@ -23,6 +31,10 @@ int onDevicesChanged(AudioObjectID inObjectID,
     self.userIsActiveRadioButton.enabled = NO;
     self.alwaysRadioButton.enabled = NO;
     self.hideWhenUnavailableCheckbox.enabled = NO;
+    self.deviceIconPopUpButton.enabled = NO;
+    [self populateDeviceIconPopUpButton];
+    [self setupEqualizerControls];
+    [self setEqualizerControlsEnabled:NO];
     initializationAttemptInterval = 3;
     [self keepTryingToInitializeUntilSuccess];
 }
@@ -73,6 +85,10 @@ int onDevicesChanged(AudioObjectID inObjectID,
     self.hideWhenUnavailableCheckbox.enabled = YES;
     self.hideWhenUnavailableCheckbox.state =
         [self currentHideWhenUnavailable] ? NSControlStateValueOn : NSControlStateValueOff;
+    self.deviceIconPopUpButton.enabled = YES;
+    [self.deviceIconPopUpButton selectItemWithTag:(NSInteger)[self currentDeviceIcon]];
+    [self showEqualizerSettings:[self currentEqualizerSettings]];
+    [self setEqualizerControlsEnabled:YES];
 
     ProxyAudioDevice::ActiveCondition condition = [self currentOutputDeviceActiveCondition];
 
@@ -306,6 +322,240 @@ int onDevicesChanged(AudioObjectID inObjectID,
 - (IBAction)hideWhenUnavailableToggled:(id)sender {
     #pragma unused(sender)
     [self setCurrentHideWhenUnavailable:(self.hideWhenUnavailableCheckbox.state == NSControlStateValueOn)];
+}
+
+// The glyphs Control Center shows for output devices. Tags are DeviceIcon
+// values; how the driver gets macOS to show each one is up to the driver.
+- (void)populateDeviceIconPopUpButton {
+    struct {
+        NSString *title;
+        NSString *symbolName;
+        DeviceIcon icon;
+    } choices[] = {
+        {NSLocalizedString(@"Default", nil), @"speaker.wave.2.fill", DeviceIcon::standard},
+        {NSLocalizedString(@"Laptop", nil), @"laptopcomputer", DeviceIcon::laptop},
+        {NSLocalizedString(@"TV", nil), @"tv.and.hifispeaker.fill", DeviceIcon::tv},
+    };
+
+    [self.deviceIconPopUpButton removeAllItems];
+
+    for (const auto &choice : choices) {
+        [self.deviceIconPopUpButton addItemWithTitle:choice.title];
+        NSMenuItem *item = self.deviceIconPopUpButton.lastItem;
+        item.tag = (NSInteger)choice.icon;
+
+        if (@available(macOS 11.0, *)) {
+            item.image = [NSImage imageWithSystemSymbolName:choice.symbolName accessibilityDescription:choice.title];
+        }
+    }
+}
+
+- (DeviceIcon)currentDeviceIcon {
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setIdentifyValue(proxyAudioBox, -((SInt32)ProxyAudioDevice::ConfigType::deviceIcon));
+    NSString *result = (__bridge_transfer NSString *)AudioDevice::copyObjectName(proxyAudioBox);
+    int value = result ? [result intValue] : 0;
+
+    return isValidDeviceIcon(value) ? DeviceIcon(value) : kDeviceDefaultIcon;
+}
+
+- (IBAction)deviceIconSelected:(id)sender {
+    #pragma unused(sender)
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setObjectName(
+        proxyAudioBox,
+        (__bridge CFStringRef)[NSString stringWithFormat:@"deviceIcon=%ld", (long)self.deviceIconPopUpButton.selectedTag]);
+}
+
+#pragma mark Equalizer
+
+- (NSTextField *)makeLabel:(NSString *)text frame:(NSRect)frame alignment:(NSTextAlignment)alignment small:(BOOL)small {
+    NSTextField *label = [[NSTextField alloc] initWithFrame:frame];
+    label.stringValue = text;
+    label.bezeled = NO;
+    label.drawsBackground = NO;
+    label.editable = NO;
+    label.selectable = NO;
+    label.alignment = alignment;
+    label.autoresizingMask = NSViewMaxXMargin | NSViewMaxYMargin;
+
+    if (small) {
+        label.font = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
+        label.textColor = [NSColor secondaryLabelColor];
+    }
+
+    return label;
+}
+
+// The section is built in code rather than in the xib: it's 11 identical
+// columns, which are easier to keep consistent as a loop.
+- (void)setupEqualizerControls {
+    NSWindow *window = self.deviceNameTextField.window;
+    NSView *content = window.contentView;
+    const CGFloat H = kEqualizerSectionHeight;
+
+    // Existing controls are pinned to the top, so growing the window makes room at the bottom.
+    NSSize size = content.frame.size;
+    size.height += H;
+    [window setContentSize:size];
+    window.contentMinSize = NSMakeSize(window.contentMinSize.width, size.height);
+    window.contentMaxSize = NSMakeSize(window.contentMaxSize.width, size.height);
+
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(20, H - 1, size.width - 40, 1)];
+    separator.boxType = NSBoxSeparator;
+    separator.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
+    [content addSubview:separator];
+
+    [content addSubview:[self makeLabel:NSLocalizedString(@"Equalizer:", nil)
+                                  frame:NSMakeRect(10, H - 30, 142, 16)
+                              alignment:NSTextAlignmentRight
+                                  small:NO]];
+
+    equalizerEnabledCheckbox = [[NSButton alloc] initWithFrame:NSMakeRect(157, H - 31, 200, 18)];
+    [equalizerEnabledCheckbox setButtonType:NSButtonTypeSwitch];
+    equalizerEnabledCheckbox.title = NSLocalizedString(@"Enabled", nil);
+    equalizerEnabledCheckbox.target = self;
+    equalizerEnabledCheckbox.action = @selector(equalizerChanged:);
+    equalizerEnabledCheckbox.autoresizingMask = NSViewMaxXMargin | NSViewMaxYMargin;
+    [content addSubview:equalizerEnabledCheckbox];
+
+    equalizerFlatButton = [[NSButton alloc] initWithFrame:NSMakeRect(size.width - 100, H - 38, 86, 32)];
+    equalizerFlatButton.bezelStyle = NSBezelStyleRounded;
+    equalizerFlatButton.title = NSLocalizedString(@"Flat", nil);
+    equalizerFlatButton.target = self;
+    equalizerFlatButton.action = @selector(equalizerFlatPressed:);
+    equalizerFlatButton.autoresizingMask = NSViewMinXMargin | NSViewMaxYMargin;
+    [content addSubview:equalizerFlatButton];
+
+    equalizerSliders = [NSMutableArray array];
+    equalizerValueLabels = [NSMutableArray array];
+
+    const CGFloat columnWidth = 40;
+    const CGFloat sliderBottom = 42;
+    const CGFloat sliderHeight = H - 100;
+
+    for (int column = 0; column <= kEqualizerBandCount; column++) {
+        // Leave a gap between the preamp and the bands.
+        CGFloat x = 20 + column * columnWidth + (column > 0 ? 30 : 0);
+        NSString *title;
+
+        if (column == 0) {
+            title = NSLocalizedString(@"Preamp", nil);
+        } else {
+            double frequency = kEqualizerBandFrequencies[column - 1];
+            title = frequency >= 1000 ? [NSString stringWithFormat:@"%gk", frequency / 1000]
+                                      : [NSString stringWithFormat:@"%d", (int)frequency];
+        }
+
+        // Taller than wide, so AppKit draws it vertically.
+        NSSlider *slider = [[NSSlider alloc]
+            initWithFrame:NSMakeRect(x + (columnWidth - 24) / 2, sliderBottom, 24, sliderHeight)];
+        slider.minValue = kEqualizerMinGainDB;
+        slider.maxValue = kEqualizerMaxGainDB;
+        slider.doubleValue = 0;
+        slider.numberOfTickMarks = 5;
+        slider.continuous = YES;
+        slider.target = self;
+        slider.action = @selector(equalizerChanged:);
+        slider.autoresizingMask = NSViewMaxXMargin | NSViewMaxYMargin;
+        [content addSubview:slider];
+        [equalizerSliders addObject:slider];
+
+        NSTextField *valueLabel = [self makeLabel:@"0"
+                                            frame:NSMakeRect(x - 5, sliderBottom + sliderHeight + 4, columnWidth + 10, 14)
+                                        alignment:NSTextAlignmentCenter
+                                            small:YES];
+        [content addSubview:valueLabel];
+        [equalizerValueLabels addObject:valueLabel];
+
+        [content addSubview:[self makeLabel:title
+                                      frame:NSMakeRect(x - 10, 20, columnWidth + 20, 16)
+                                  alignment:NSTextAlignmentCenter
+                                      small:NO]];
+    }
+}
+
+- (void)setEqualizerControlsEnabled:(BOOL)enabled {
+    equalizerEnabledCheckbox.enabled = enabled;
+    equalizerFlatButton.enabled = enabled;
+
+    for (NSSlider *slider in equalizerSliders) {
+        slider.enabled = enabled;
+    }
+}
+
+// Snap to half dB steps, so the stored values stay short and readable. The
+// slider itself isn't snapped, since writing to it mid-drag fights the mouse.
+static double snappedGain(NSSlider *slider) {
+    return EqualizerClampGain(round(slider.doubleValue * 2) / 2);
+}
+
+- (void)updateEqualizerValueLabels {
+    for (NSUInteger i = 0; i < equalizerSliders.count; i++) {
+        double value = snappedGain(equalizerSliders[i]);
+        equalizerValueLabels[i].stringValue = value == 0 ? @"0" : [NSString stringWithFormat:@"%+.1f", value];
+    }
+}
+
+- (EqualizerSettings)equalizerSettingsFromControls {
+    EqualizerSettings settings;
+    settings.enabled = equalizerEnabledCheckbox.state == NSControlStateValueOn;
+
+    for (NSUInteger i = 0; i < equalizerSliders.count; i++) {
+        double value = snappedGain(equalizerSliders[i]);
+
+        if (i == 0) {
+            settings.preampDB = value;
+        } else {
+            settings.gainsDB[i - 1] = value;
+        }
+    }
+
+    return settings;
+}
+
+- (void)showEqualizerSettings:(const EqualizerSettings &)settings {
+    equalizerEnabledCheckbox.state = settings.enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    equalizerSliders[0].doubleValue = settings.preampDB;
+
+    for (int band = 0; band < kEqualizerBandCount; band++) {
+        equalizerSliders[band + 1].doubleValue = settings.gainsDB[band];
+    }
+
+    [self updateEqualizerValueLabels];
+}
+
+- (EqualizerSettings)currentEqualizerSettings {
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setIdentifyValue(proxyAudioBox, -((SInt32)ProxyAudioDevice::ConfigType::equalizer));
+    NSString *result = (__bridge_transfer NSString *)AudioDevice::copyObjectName(proxyAudioBox);
+    EqualizerSettings settings;
+    EqualizerSettingsFromString((__bridge CFStringRef)result, settings);
+
+    return settings;
+}
+
+- (void)sendEqualizerSettings:(const EqualizerSettings &)settings {
+    NSString *value = (__bridge_transfer NSString *)EqualizerSettingsCopyString(settings);
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setObjectName(proxyAudioBox,
+                               (__bridge CFStringRef)[NSString stringWithFormat:@"equalizer=%@", value]);
+}
+
+- (IBAction)equalizerChanged:(id)sender {
+    #pragma unused(sender)
+    EqualizerSettings settings = [self equalizerSettingsFromControls];
+    [self updateEqualizerValueLabels];
+    [self sendEqualizerSettings:settings];
+}
+
+- (IBAction)equalizerFlatPressed:(id)sender {
+    #pragma unused(sender)
+    for (NSSlider *slider in equalizerSliders) {
+        slider.doubleValue = 0;
+    }
+
+    [self equalizerChanged:sender];
 }
 
 @end

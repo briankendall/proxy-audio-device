@@ -7,6 +7,7 @@
 #include <atomic>
 
 #include "AudioDevice.h"
+#include "Equalizer.h"
 #include "CAMutex.h"
 
 class AudioRingBuffer;
@@ -32,6 +33,7 @@ enum {
 // Default to false so the proxy device stays visible even when the target is
 // unavailable. This preserves the long-standing behavior for existing users.
 #define kOutputDeviceDefaultHideWhenUnavailable false
+#define kDeviceDefaultIcon DeviceIcon::standard
 
 // Proxy clock servo (see GetZeroTimeStamp / updateProxyClockCorrectionNoLock). The proxy device's
 // clock is synthetic, so rather than letting it free-run at a rate estimated from the target
@@ -50,6 +52,17 @@ enum {
 // as the device having established a new time line, e.g. after coreaudiod restarted its IO engine.
 #define kTimelineJumpToleranceFrames 16384.0
 
+// The glyphs Control Center can show for this device. Stored as numbers, so
+// never reuse a value. Retired values read as the default: 1 (speakers, USB)
+// looked the same as the default, and 4/5 (headphones/earbuds, Bluetooth) hid
+// the device from Control Center and System Settings entirely.
+enum class DeviceIcon { standard = 0, laptop = 2, tv = 3 };
+
+inline bool isValidDeviceIcon(SInt64 value) {
+    return value == (SInt64)DeviceIcon::standard || value == (SInt64)DeviceIcon::laptop
+           || value == (SInt64)DeviceIcon::tv;
+}
+
 class ProxyAudioDevice {
   public:
     enum class ConfigType {
@@ -58,7 +71,9 @@ class ProxyAudioDevice {
         outputDeviceBufferFrameSize,
         deviceName,
         deviceActiveCondition,
-        deviceHideWhenUnavailable
+        deviceHideWhenUnavailable,
+        deviceIcon,
+        equalizer
     };
     enum class ActiveCondition { proxiedDeviceActive = 0, userActive = 1, always = 2 };
 
@@ -132,6 +147,11 @@ class ProxyAudioDevice {
     void setOutputDeviceActiveCondition(ActiveCondition newActiveCondition);
     bool retrieveOutputDeviceHideWhenUnavailableFromStorage();
     void setOutputDeviceHideWhenUnavailable(bool newHideWhenUnavailable);
+    static UInt32 transportTypeForIcon(DeviceIcon icon);
+    DeviceIcon retrieveDeviceIconFromStorage();
+    void setDeviceIcon(DeviceIcon newIcon);
+    EqualizerSettings retrieveEqualizerSettingsFromStorage();
+    void setEqualizerSettings(CFStringRef settingsString);
     void notifyHiddenPropertyChanged();
 
     static ProxyAudioDevice *deviceForDriver(void *inDriver);
@@ -545,6 +565,16 @@ class ProxyAudioDevice {
     UInt64 proxyClockPeriodsSinceLog = 0;
     ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     bool outputDeviceHideWhenUnavailable = kOutputDeviceDefaultHideWhenUnavailable;
+    DeviceIcon deviceIcon = kDeviceDefaultIcon;
+
+    // Guarded by stateMutex. The generation tells the IO proc when to reconfigure.
+    EqualizerSettings equalizerSettings;
+    UInt64 equalizerSettingsGeneration = 1;
+    // Only used in outputDeviceIOProc, under IOMutex.
+    Equalizer equalizer;
+    UInt64 equalizerAppliedGeneration = 0;
+    Float64 equalizerAppliedSampleRate = 0.0;
+    SInt64 equalizerNextFrame = -1;
     
     UInt32 gPlugIn_RefCount = 0;
     AudioServerPlugInHostRef gPlugIn_Host = NULL;
