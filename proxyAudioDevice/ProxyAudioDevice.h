@@ -32,6 +32,9 @@ enum {
 // Default to false so the proxy device stays visible even when the target is
 // unavailable. This preserves the long-standing behavior for existing users.
 #define kOutputDeviceDefaultHideWhenUnavailable false
+// The transport type we report decides which stock glyph macOS shows for the
+// device (Control Center, the Sound menu, System Settings).
+#define kDeviceDefaultTransportType kAudioDeviceTransportTypeVirtual
 
 // Proxy clock servo (see GetZeroTimeStamp / updateProxyClockCorrectionNoLock). The proxy device's
 // clock is synthetic, so rather than letting it free-run at a rate estimated from the target
@@ -58,7 +61,8 @@ class ProxyAudioDevice {
         outputDeviceBufferFrameSize,
         deviceName,
         deviceActiveCondition,
-        deviceHideWhenUnavailable
+        deviceHideWhenUnavailable,
+        deviceTransportType
     };
     enum class ActiveCondition { proxiedDeviceActive = 0, userActive = 1, always = 2 };
 
@@ -132,6 +136,9 @@ class ProxyAudioDevice {
     void setOutputDeviceActiveCondition(ActiveCondition newActiveCondition);
     bool retrieveOutputDeviceHideWhenUnavailableFromStorage();
     void setOutputDeviceHideWhenUnavailable(bool newHideWhenUnavailable);
+    static bool isSupportedTransportType(UInt32 transportType);
+    UInt32 retrieveDeviceTransportTypeFromStorage();
+    void setDeviceTransportType(UInt32 newTransportType);
     void notifyHiddenPropertyChanged();
 
     static ProxyAudioDevice *deviceForDriver(void *inDriver);
@@ -545,6 +552,7 @@ class ProxyAudioDevice {
     UInt64 proxyClockPeriodsSinceLog = 0;
     ActiveCondition outputDeviceActiveCondition = ActiveCondition::userActive;
     bool outputDeviceHideWhenUnavailable = kOutputDeviceDefaultHideWhenUnavailable;
+    UInt32 deviceTransportType = kDeviceDefaultTransportType;
     
     UInt32 gPlugIn_RefCount = 0;
     AudioServerPlugInHostRef gPlugIn_Host = NULL;

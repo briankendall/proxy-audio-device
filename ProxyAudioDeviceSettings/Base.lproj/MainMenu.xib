@@ -17,6 +17,7 @@
             <connections>
                 <outlet property="alwaysRadioButton" destination="Qmk-xY-0ok" id="2yu-wp-avo"/>
                 <outlet property="bufferSizeComboBox" destination="Tu4-jv-3Xp" id="e5z-EY-esA"/>
+                <outlet property="deviceIconPopUpButton" destination="icn-01-pop" id="icn-01-out"/>
                 <outlet property="deviceNameTextField" destination="Vuz-aO-zYY" id="Jbh-lS-r17"/>
                 <outlet property="hideWhenUnavailableCheckbox" destination="hWu-01-chk" id="hWu-01-out"/>
                 <outlet property="outputDeviceComboBox" destination="8bM-6q-Jq9" id="hOu-HN-ffg"/>
@@ -349,12 +350,12 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" texturedBackground="YES"/>
             <windowCollectionBehavior key="collectionBehavior" fullScreenNone="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
-            <rect key="contentRect" x="335" y="390" width="511" height="334"/>
+            <rect key="contentRect" x="335" y="390" width="511" height="366"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1417"/>
-            <value key="minSize" type="size" width="280" height="334"/>
-            <value key="maxSize" type="size" width="9999" height="334"/>
+            <value key="minSize" type="size" width="280" height="366"/>
+            <value key="maxSize" type="size" width="9999" height="366"/>
             <view key="contentView" wantsLayer="YES" id="EiT-Mj-1SZ">
-                <rect key="frame" x="0.0" y="0.0" width="511" height="334"/>
+                <rect key="frame" x="0.0" y="0.0" width="511" height="366"/>
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="K1W-uM-L8Q">
@@ -376,7 +377,7 @@
                         </textFieldCell>
                     </textField>
                     <textField verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Vuz-aO-zYY">
-                        <rect key="frame" x="158" y="292" width="333" height="22"/>
+                        <rect key="frame" x="158" y="324" width="333" height="22"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="cHH-7S-0Po">
                             <font key="font" metaFont="system"/>
@@ -432,7 +433,7 @@
                         </textFieldCell>
                     </textField>
                     <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="HsD-M9-H9y">
-                        <rect key="frame" x="10" y="295" width="142" height="16"/>
+                        <rect key="frame" x="10" y="327" width="142" height="16"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <textFieldCell key="cell" lineBreakMode="clipping" alignment="right" title="Proxy device name:" id="pmH-ny-HEp">
                             <font key="font" usesAppearanceFont="YES"/>
@@ -500,6 +501,27 @@
                             <action selector="proxiedDeviceIsActiveConditionSelected:" target="MLf-en-Bn8" id="ceM-6z-ofX"/>
                         </connections>
                     </button>
+                    <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="icn-01-lbl">
+                        <rect key="frame" x="10" y="295" width="142" height="16"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                        <textFieldCell key="cell" lineBreakMode="clipping" alignment="right" title="Icon:" id="icn-01-lcl">
+                            <font key="font" usesAppearanceFont="YES"/>
+                            <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="icn-01-pop">
+                        <rect key="frame" x="155" y="288" width="209" height="25"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                        <popUpButtonCell key="cell" type="push" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" id="icn-01-cel">
+                            <behavior key="behavior" lightByBackground="YES" lightByGray="YES"/>
+                            <font key="font" metaFont="menu"/>
+                            <menu key="menu" id="icn-01-men"/>
+                        </popUpButtonCell>
+                        <connections>
+                            <action selector="deviceIconSelected:" target="MLf-en-Bn8" id="icn-01-act"/>
+                        </connections>
+                    </popUpButton>
                     <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="hWu-01-chk">
                         <rect key="frame" x="157" y="20" width="336" height="18"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>

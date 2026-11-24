@@ -23,6 +23,8 @@ int onDevicesChanged(AudioObjectID inObjectID,
     self.userIsActiveRadioButton.enabled = NO;
     self.alwaysRadioButton.enabled = NO;
     self.hideWhenUnavailableCheckbox.enabled = NO;
+    self.deviceIconPopUpButton.enabled = NO;
+    [self populateDeviceIconPopUpButton];
     initializationAttemptInterval = 3;
     [self keepTryingToInitializeUntilSuccess];
 }
@@ -73,6 +75,8 @@ int onDevicesChanged(AudioObjectID inObjectID,
     self.hideWhenUnavailableCheckbox.enabled = YES;
     self.hideWhenUnavailableCheckbox.state =
         [self currentHideWhenUnavailable] ? NSControlStateValueOn : NSControlStateValueOff;
+    self.deviceIconPopUpButton.enabled = YES;
+    [self.deviceIconPopUpButton selectItemWithTag:[self currentDeviceTransportType]];
 
     ProxyAudioDevice::ActiveCondition condition = [self currentOutputDeviceActiveCondition];
 
@@ -306,6 +310,50 @@ int onDevicesChanged(AudioObjectID inObjectID,
 - (IBAction)hideWhenUnavailableToggled:(id)sender {
     #pragma unused(sender)
     [self setCurrentHideWhenUnavailable:(self.hideWhenUnavailableCheckbox.state == NSControlStateValueOn)];
+}
+
+// macOS picks the device's glyph from its transport type, so the icon choice is
+// sent to the driver as the transport type to report. Must match
+// ProxyAudioDevice::isSupportedTransportType.
+- (void)populateDeviceIconPopUpButton {
+    struct {
+        NSString *title;
+        UInt32 transportType;
+    } choices[] = {
+        {NSLocalizedString(@"Virtual (default)", nil), kAudioDeviceTransportTypeVirtual},
+        {NSLocalizedString(@"Built-in", nil), kAudioDeviceTransportTypeBuiltIn},
+        {NSLocalizedString(@"USB", nil), kAudioDeviceTransportTypeUSB},
+        {NSLocalizedString(@"Bluetooth", nil), kAudioDeviceTransportTypeBluetooth},
+        {NSLocalizedString(@"HDMI", nil), kAudioDeviceTransportTypeHDMI},
+        {NSLocalizedString(@"DisplayPort", nil), kAudioDeviceTransportTypeDisplayPort},
+        {NSLocalizedString(@"AirPlay", nil), kAudioDeviceTransportTypeAirPlay},
+        {NSLocalizedString(@"Thunderbolt", nil), kAudioDeviceTransportTypeThunderbolt},
+    };
+
+    [self.deviceIconPopUpButton removeAllItems];
+
+    for (const auto &choice : choices) {
+        [self.deviceIconPopUpButton addItemWithTitle:choice.title];
+        self.deviceIconPopUpButton.lastItem.tag = choice.transportType;
+    }
+}
+
+- (UInt32)currentDeviceTransportType {
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setIdentifyValue(proxyAudioBox, -((SInt32)ProxyAudioDevice::ConfigType::deviceTransportType));
+    NSString *result = (__bridge_transfer NSString *)AudioDevice::copyObjectName(proxyAudioBox);
+
+    return result ? (UInt32)[result longLongValue] : kAudioDeviceTransportTypeVirtual;
+}
+
+- (IBAction)deviceIconSelected:(id)sender {
+    #pragma unused(sender)
+    UInt32 transportType = (UInt32)self.deviceIconPopUpButton.selectedTag;
+    AudioDeviceID proxyAudioBox = AudioDevice::audioDeviceIDForBoxUID(CFSTR(kBox_UID));
+    AudioDevice::setObjectName(
+        proxyAudioBox,
+        (__bridge_retained CFStringRef)
+            [NSString stringWithFormat:@"deviceTransportType=%u", (unsigned int)transportType]);
 }
 
 @end

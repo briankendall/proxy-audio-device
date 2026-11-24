@@ -571,6 +571,7 @@ OSStatus ProxyAudioDevice::Initialize(AudioServerPlugInDriverRef inDriver, Audio
     outputDeviceBufferFrameSize = retrieveOutputDeviceBufferFrameSizeFromStorage();
     outputDeviceActiveCondition = retrieveOutputDeviceActiveConditionFromStorage();
     outputDeviceHideWhenUnavailable = retrieveOutputDeviceHideWhenUnavailableFromStorage();
+    deviceTransportType = retrieveDeviceTransportTypeFromStorage();
 
     //    calculate the host ticks per frame
     struct mach_timebase_info theTimeBaseInfo;
@@ -2044,7 +2045,7 @@ OSStatus ProxyAudioDevice::GetBoxPropertyData(AudioServerPlugInDriverRef inDrive
                            Done,
                            "GetBoxPropertyData: not enough space for the return value of "
                            "kAudioDevicePropertyTransportType for the box");
-            *((UInt32 *)outData) = kAudioDeviceTransportTypeVirtual;
+            *((UInt32 *)outData) = deviceTransportType;
             *outDataSize = sizeof(UInt32);
             break;
 
@@ -2811,7 +2812,7 @@ OSStatus ProxyAudioDevice::GetDevicePropertyData(AudioServerPlugInDriverRef inDr
                            Done,
                            "GetDevicePropertyData: not enough space for the return value of "
                            "kAudioDevicePropertyTransportType for the device");
-            *((UInt32 *)outData) = kAudioDeviceTransportTypeVirtual;
+            *((UInt32 *)outData) = deviceTransportType;
             *outDataSize = sizeof(UInt32);
             break;
 
@@ -5688,6 +5689,8 @@ void ProxyAudioDevice::parseConfigurationString(CFStringRef configString, Config
         action = ConfigType::deviceActiveCondition;
     } else if (CFStringCompare(actionString, CFSTR("outputDeviceHideWhenUnavailable"), 0) == kCFCompareEqualTo) {
         action = ConfigType::deviceHideWhenUnavailable;
+    } else if (CFStringCompare(actionString, CFSTR("deviceTransportType"), 0) == kCFCompareEqualTo) {
+        action = ConfigType::deviceTransportType;
     } else {
         return;
     }
@@ -5728,6 +5731,11 @@ void ProxyAudioDevice::setConfigurationValue(ConfigType type, CFStringRef value)
             setOutputDeviceHideWhenUnavailable(CFStringGetIntValue(value) != 0);
             break;
 
+        case ConfigType::deviceTransportType:
+            // Configurator passes the four char code as a decimal number.
+            setDeviceTransportType((UInt32)CFStringGetIntValue(value));
+            break;
+
         default:
             break;
     }
@@ -5751,6 +5759,9 @@ CFStringRef ProxyAudioDevice::copyConfigurationValue(ConfigType type) {
 
         case ConfigType::deviceHideWhenUnavailable:
             return CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), outputDeviceHideWhenUnavailable ? 1 : 0);
+
+        case ConfigType::deviceTransportType:
+            return CFStringCreateWithFormat(NULL, NULL, CFSTR("%u"), (unsigned int)deviceTransportType);
 
         default:
             return nullptr;
@@ -6002,6 +6013,73 @@ void ProxyAudioDevice::setOutputDeviceHideWhenUnavailable(bool newHideWhenUnavai
     // re-query kAudioDevicePropertyIsHidden immediately instead of waiting for
     // the next device-availability transition.
     notifyHiddenPropertyChanged();
+}
+
+bool ProxyAudioDevice::isSupportedTransportType(UInt32 transportType) {
+    switch (transportType) {
+        case kAudioDeviceTransportTypeVirtual:
+        case kAudioDeviceTransportTypeBuiltIn:
+        case kAudioDeviceTransportTypeUSB:
+        case kAudioDeviceTransportTypeBluetooth:
+        case kAudioDeviceTransportTypeHDMI:
+        case kAudioDeviceTransportTypeDisplayPort:
+        case kAudioDeviceTransportTypeAirPlay:
+        case kAudioDeviceTransportTypeThunderbolt:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+UInt32 ProxyAudioDevice::retrieveDeviceTransportTypeFromStorage() {
+    DebugMsg("ProxyAudio: retrieveDeviceTransportTypeFromStorage");
+
+    if (!gPlugIn_Host) {
+        DebugMsg("ProxyAudio: retrieveDeviceTransportTypeFromStorage no plugin host");
+        return kDeviceDefaultTransportType;
+    }
+
+    CFPropertyListSmartRef data;
+    gPlugIn_Host->CopyFromStorage(gPlugIn_Host, CFSTR("deviceTransportType"), &data);
+
+    if (data == NULL || CFGetTypeID(data) != CFNumberGetTypeID()) {
+        DebugMsg("ProxyAudio: retrieveDeviceTransportTypeFromStorage finished returning default value");
+        return kDeviceDefaultTransportType;
+    }
+
+    SInt64 value;
+    CFNumberGetValue(CFNumberRef(CFPropertyListRef(data)), kCFNumberSInt64Type, &value);
+
+    if (!isSupportedTransportType((UInt32)value)) {
+        return kDeviceDefaultTransportType;
+    }
+
+    return (UInt32)value;
+}
+
+void ProxyAudioDevice::setDeviceTransportType(UInt32 newTransportType) {
+    if (!isSupportedTransportType(newTransportType)) {
+        return;
+    }
+
+    {
+        CAMutex::Locker locker(&stateMutex);
+        deviceTransportType = newTransportType;
+        SInt64 value = newTransportType;
+        CFNumberSmartRef valueRef = CFNumberCreate(NULL, kCFNumberSInt64Type, &value);
+        gPlugIn_Host->WriteToStorage(gPlugIn_Host, CFSTR("deviceTransportType"), valueRef);
+    }
+
+    // Box and device share the 'tran' selector. Notify both so Control Center
+    // and the Sound menu redraw the glyph without a coreaudiod restart.
+    ExecuteInAudioOutputThread(^() {
+        AudioObjectPropertyAddress theAddress = {kAudioDevicePropertyTransportType,
+                                                 kAudioObjectPropertyScopeGlobal,
+                                                 kAudioObjectPropertyElementMaster};
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Device, 1, &theAddress);
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, kObjectID_Box, 1, &theAddress);
+    });
 }
 
 // Tell the host to re-read kAudioDevicePropertyIsHidden. We always notify,
